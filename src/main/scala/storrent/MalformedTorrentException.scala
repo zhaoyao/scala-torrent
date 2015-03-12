@@ -1,0 +1,3 @@
+package storrent
+
+class MalformedTorrentException extends RuntimeException
