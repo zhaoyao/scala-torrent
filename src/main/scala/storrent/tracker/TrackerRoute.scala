@@ -3,10 +3,9 @@ package storrent.tracker
 import akka.actor.{ActorSelection, ActorSystem}
 import akka.pattern._
 import akka.util.Timeout
-import com.github.mauricio.async.db.util.HexCodec
 import spray.http.MediaType
 import spray.routing.Directives
-import storrent.Peer
+import storrent.{Util, Peer}
 import TorrentStateActor.PeerUpdate
 import storrent.bencode.BencodeEncoder
 
@@ -60,7 +59,7 @@ trait TrackerRoute {
             (peerId, ip.flatMap(ip => port.map(port => (ip, port))))
           }
 
-          val infoHashHex = HexCodec.encode(infoHash.getBytes)
+          val infoHashHex = Util.encodeHex(infoHash.getBytes)
           val update = PeerUpdate(infoHashHex, Peer(pid, peerAddr), event, uploaded, downloaded, left)
           val result = (torrentManger ? update).mapTo[List[Peer]].map { peers =>
             val hasAddrs = peers.filter(_.ipPort.isDefined)

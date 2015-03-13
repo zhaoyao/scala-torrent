@@ -1,11 +1,5 @@
 package storrent
 
-import java.io.FileOutputStream
-import java.net.{Inet4Address, InetAddress}
-import java.nio.ByteBuffer
-
-import io.netty.handler.codec.socks.SocksAddressType
-
 
 case class Peer(id: String, ipPort: Option[(String, Int)]) {
 

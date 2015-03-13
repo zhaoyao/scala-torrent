@@ -1,7 +1,5 @@
 package storrent.bencode
 
-import org.apache.commons.io.Charsets
-
 import scala.util.Try
 import scala.util.parsing.combinator.{ImplicitConversions, Parsers}
 
@@ -96,7 +94,7 @@ object BencodeEncoder {
       case x: Int       => int(x)
       case x: Long      => int(x)
       case x: String    => string(x)
-      case x: Array[Byte] => string(new String(x, Charsets.UTF_8))
+      case x: Array[Byte] => string(new String(x, "utf-8"))
       case x: List[_]   => list(x)
       case x: Map[_, _] => dictionary(x.asInstanceOf[Map[String, _]])
       case x            => throw new RuntimeException("Unable to encode data: " + x)

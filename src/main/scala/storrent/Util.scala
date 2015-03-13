@@ -2,9 +2,6 @@ package storrent
 
 import java.security.MessageDigest
 
-import com.github.mauricio.async.db.util.HexCodec
-import storrent.bencode.BencodeEncoder
-
 /**
  * User: zhaoyao
  * Date: 3/13/15

@@ -2,7 +2,6 @@ package storrent
 
 import java.nio.file.{Files, Paths}
 
-import org.apache.commons.io.Charsets
 import org.scalatest.{FunSuite, Matchers}
 
 /**
@@ -13,11 +12,11 @@ import org.scalatest.{FunSuite, Matchers}
 class TorrentTest extends FunSuite with Matchers {
 
   def file(path: String) = {
-    new String(Files.readAllBytes(Paths.get(path)), Charsets.ISO_8859_1)
+    new String(Files.readAllBytes(Paths.get(path)), "ISO-8859-1")
   }
 
   test("parse torrents") {
-    val raw = file("/Users/zhaoyao/Downloads/9FE44783704319D9DBAE418F745A1FB106E45B1F.torrent")
+    val raw = file("src/test/resources/torrents/9FE44783704319D9DBAE418F745A1FB106E45B1F.torrent")
     Torrent(raw).get.toBencoding shouldEqual raw
   }
 
