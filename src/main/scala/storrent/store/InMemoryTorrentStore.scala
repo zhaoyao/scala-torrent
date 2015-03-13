@@ -11,7 +11,7 @@ class InMemoryTorrentStore extends TorrentStore {
   override def get(infoHash: String): Future[Option[Torrent]] = Future.successful(_store.get(infoHash))
 
   override def put(torrent: Torrent): Future[Boolean] = {
-    _store.put(torrent.infoHash, torrent)
+    _store.put(torrent.info.hash, torrent)
     Future.successful(true)
   }
 }

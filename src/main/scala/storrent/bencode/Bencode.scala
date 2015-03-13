@@ -46,7 +46,8 @@ object BencodeDecoder extends ParserGenerator with ImplicitConversions {
   def decode(in: String): Try[Any] =
     doc(in) match {
       case Success(v, _)     => util.Success(v)
-      case NoSuccess(msg, _) => util.Failure(new MalformedBencodeException(msg))
+      case NoSuccess(msg, _) =>
+        util.Failure(new MalformedBencodeException(msg))
     }
 
   lazy val doc: Parser[Any] = number | string | list | dict
@@ -56,6 +57,7 @@ object BencodeDecoder extends ParserGenerator with ImplicitConversions {
   lazy val int =
     (digits ^^ { case x => x.mkString.toLong }) |
       ('-' ~> digits ^^ { case x => x.mkString.toLong * -1 })
+
   lazy val digits = rep1(digit)
   lazy val digit = elem("digit", c => c >= '0' && c <= '9')
 
@@ -70,17 +72,16 @@ object BencodeDecoder extends ParserGenerator with ImplicitConversions {
       case x =>
         x.mkString
     }
-
   lazy val char = elem("any char", c => true)
 
   // Lists li1ei2ee -> [1, 2]
-  lazy val list = 'l' ~> rep1(doc) <~ 'e'
+  lazy val list = 'l' ~> rep(doc) <~ 'e'
 
   // Dictionaries d3:fooi1ee -> { "foo": 1 }
   lazy val dict =
     'd' ~> members <~ 'e' ^^ { case xs => Map(xs: _*) } |
       'd' ~ 'e' ^^ { case x ~ y => Map() }
-  lazy val members = rep1(pair)
+  lazy val members = (rep1(pair))
   lazy val pair: Parser[(String, Any)] = string ~ doc ^^ { case x ~ y => (x, y) }
 }
 
