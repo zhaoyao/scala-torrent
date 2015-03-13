@@ -2,6 +2,7 @@ package storrent.client
 
 import akka.actor.{ActorRef, Actor}
 import akka.actor.Actor.Receive
+import storrent.Torrent
 import storrent.client.TorrentClientActor.StartSeeding
 
 object TorrentClientActor {
