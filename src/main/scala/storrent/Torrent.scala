@@ -1,6 +1,6 @@
 package storrent
 
-import storrent.bencode.BencodeDecoder
+import storrent.bencode.{BencodeEncoder, BencodeDecoder}
 
 import scala.util.{Failure, Try}
 
@@ -28,4 +28,5 @@ class Torrent private (fields: Map[String, Any]) {
 
   def infoHash: String = fields("info_hash").asInstanceOf[String]
 
+  def toBencoding = BencodeEncoder.encode(fields)
 }

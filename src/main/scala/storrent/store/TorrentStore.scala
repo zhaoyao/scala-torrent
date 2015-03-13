@@ -1,9 +1,9 @@
-package storrent.tracker
+package storrent.store
 
 import akka.actor.{Actor, ActorRef, ActorSystem, Props}
 import akka.pattern._
 import storrent.Torrent
-import storrent.tracker.store.InMemoryTorrentStore
+import storrent.store.TorrentStoreActorMessages.{StoreTorrent, GetTorrent}
 
 import scala.concurrent.Future
 
@@ -16,7 +16,7 @@ trait TorrentStore {
 
   def get(infoHash: String): Future[Option[Torrent]]
 
-  def put(torrent: Torrent)
+  def put(torrent: Torrent): Future[Boolean]
 
 }
 

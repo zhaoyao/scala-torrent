@@ -4,7 +4,6 @@ import akka.actor.{ActorPath, ActorSelection, ActorSystem}
 import akka.io.Inet
 import spray.can.server.ServerSettings
 import spray.routing.{Directives, SimpleRoutingApp}
-import storrent.tracker.TorrentManager
 
 import scala.collection.immutable
 import scala.util.Properties
@@ -22,6 +21,7 @@ object Stracker {
             options: immutable.Traversable[Inet.SocketOption] = Nil,
             settings: Option[ServerSettings] = None,
             system: ActorSystem = ActorSystem("stracker")): Unit = {
+
     val torrentManager = TorrentManager.start(system)
     val webPort = Properties.envOrElse("PORT", "8080").toInt
 

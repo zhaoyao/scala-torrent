@@ -7,7 +7,6 @@ import com.github.mauricio.async.db.util.HexCodec
 import spray.http.MediaType
 import spray.routing.Directives
 import storrent.Peer
-import TorrentStateActor
 import TorrentStateActor.PeerUpdate
 import storrent.bencode.BencodeEncoder
 

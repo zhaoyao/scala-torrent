@@ -1,5 +1,7 @@
 package storrent.tracker
 
+import storrent.Peer
+
 case class PeerState(peer: Peer,
                      uploaded: Long,
                      downloaded: Long,

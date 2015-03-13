@@ -2,6 +2,7 @@ package storrent.tracker
 
 import akka.actor.{Actor, ActorLogging}
 import storrent.Peer
+import storrent.tracker.TorrentStateActor.PeerUpdate
 
 object TorrentStateActor {
 

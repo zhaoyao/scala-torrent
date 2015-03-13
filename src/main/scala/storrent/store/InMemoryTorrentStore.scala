@@ -1,7 +1,6 @@
-package storrent.tracker.store
+package storrent.store
 
 import storrent.Torrent
-import storrent.tracker.TorrentStore
 
 import scala.concurrent.Future
 
@@ -11,5 +10,8 @@ class InMemoryTorrentStore extends TorrentStore {
 
   override def get(infoHash: String): Future[Option[Torrent]] = Future.successful(_store.get(infoHash))
 
-  override def put(torrent: Torrent): Unit = _store.put(torrent.infoHash, torrent)
+  override def put(torrent: Torrent): Future[Boolean] = {
+    _store.put(torrent.infoHash, torrent)
+    Future.successful(true)
+  }
 }
