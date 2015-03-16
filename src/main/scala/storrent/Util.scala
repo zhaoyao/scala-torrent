@@ -9,10 +9,14 @@ import java.security.MessageDigest
  */
 object Util {
 
+  def sha1Hex(value: String) = {
+    encodeHex(sha1(value))
+  }
+
   def sha1(value: String) = {
     val digest = MessageDigest.getInstance("sha1")
     digest.update(value.getBytes())
-    encodeHex(digest.digest())
+    digest.digest()
   }
 
 

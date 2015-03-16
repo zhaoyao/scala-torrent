@@ -76,13 +76,14 @@ class InfoDict(fields: Map[String, Any]) {
     }
   }
 
-  val hash: String = Util.sha1(BencodeEncoder.encode(fields))
+  val hash: String = Util.sha1Hex(BencodeEncoder.encode(fields))
+  val hashRaw: Array[Byte] = Util.sha1(BencodeEncoder.encode(fields))
 }
 
 class Torrent private(fields: Map[String, Any]) {
 
   val announce: String = fields("announce").asInstanceOf[String]
-  val announceList: List[String] = fields.getOrElse("announce-list", Nil).asInstanceOf[List[List[String]]].map(_(0))
+  val announceList: List[List[String]] = fields.getOrElse("announce-list", Nil).asInstanceOf[List[List[String]]]
   val comment: Option[String] = Torrent.preferUtf8String(fields, "comment")
   val publisher: Option[String] = Torrent.preferUtf8String(fields, "publisher")
   val createdBy: Option[String] = fields.get("created by").asInstanceOf[Option[String]]
