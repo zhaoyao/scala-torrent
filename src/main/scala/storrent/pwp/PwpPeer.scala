@@ -1,7 +1,7 @@
 package storrent.pwp
 
 import akka.actor._
-import storrent.{Peer, Torrent}
+import storrent.{PeerId, Peer, Torrent}
 
 import scala.collection.mutable
 import scala.concurrent.duration.DurationInt
@@ -19,6 +19,8 @@ class PwpPeer(torrent: Torrent) extends Actor with ActorLogging {
   import context.dispatcher
 
   val peerConns = new mutable.HashMap[String, ActorRef]()
+
+  val id = PeerId()
 
   def announce(): (Int, List[Peer]) = {
     (-1, Nil)
@@ -47,7 +49,7 @@ class PwpPeer(torrent: Torrent) extends Actor with ActorLogging {
   }
 
   def createPeer(p: Peer): ActorRef = {
-    val c = context.actorOf(PeerConnection.props(p), s"${torrent.info.hash}/${p.id}-conn")
+    val c = context.actorOf(PeerConnection.props(torrent.info.hash, id, p), s"${torrent.info.hash}/${p.id}-conn")
     context.watch(c)
     c
   }

@@ -43,7 +43,7 @@ class MessageDecoder(maxMessageLength: Int = 1024 * 1024 * 5) {
 
   import storrent.pwp.Message._
 
-  def decodeMessage(): Message = {
+  private def decodeMessage(): Message = {
     assert(payloadBuffer == null || payloadBuffer.remaining() == 0)
     if (payloadBuffer != null) {
       payloadBuffer.rewind()
