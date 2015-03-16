@@ -14,8 +14,9 @@ object MessageDecoder {
   val State_WANT_MSG_ID = 1
   val State_WANT_PAYLOAD = 2
 
-
 }
+
+
 
 /**
  * ** NOT THREAD SAFE
@@ -29,7 +30,7 @@ class MessageDecoder(maxMessageLength: Int = 1024 * 1024 * 5) {
   val lengthBuffer = ByteBuffer.allocate(4)
   var payloadBuffer: ByteBuffer = null
 
-  var msgLength = 0
+  var msgLength = -1
   var msgId: Byte = -1;
 
   def reset() = {
@@ -37,16 +38,18 @@ class MessageDecoder(maxMessageLength: Int = 1024 * 1024 * 5) {
     lengthBuffer.rewind()
     payloadBuffer = null
     msgId = -1
-    msgLength = 0
+    msgLength = -1
   }
 
   import storrent.pwp.Message._
 
   def decodeMessage(): Message = {
     assert(payloadBuffer == null || payloadBuffer.remaining() == 0)
-    payloadBuffer.rewind()
+    if (payloadBuffer != null) {
+      payloadBuffer.rewind()
+    }
 
-    msgId match {
+    val msg = msgId match {
       case MsgChoke => Choke
       case MsgUnchoke => Unchoke
       case MsgInterested => Interested
@@ -67,13 +70,18 @@ class MessageDecoder(maxMessageLength: Int = 1024 * 1024 * 5) {
       case MsgRequest =>
         Request(payloadBuffer.getInt, payloadBuffer.getInt, payloadBuffer.getInt)
       case MsgPiece =>
+        val pieceIndex = payloadBuffer.getInt
+        val blockOffset = payloadBuffer.getInt
         val blockLength = payloadBuffer.limit() - 8
         val block = new Array[Byte](blockLength)
         payloadBuffer.get(block)
-        Piece(payloadBuffer.getInt, payloadBuffer.getInt, block)
+        Piece(pieceIndex, blockOffset, block)
       case MsgCancel =>
         Cancel(payloadBuffer.getInt, payloadBuffer.getInt, payloadBuffer.getInt)
     }
+
+    reset()
+    msg
   }
 
   def decode(data: ByteString): (Option[Message], ByteString) = {
