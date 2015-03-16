@@ -32,7 +32,8 @@ class PeerConnection(infoHash: String,
 
   val torrentClient = context.parent
 
-  val choked = new AtomicBoolean(false)
+  val choked = new AtomicBoolean(true)
+
   val interested = new AtomicBoolean(false)
 
   override def preStart(): Unit = {
