@@ -29,6 +29,10 @@ class MessageEncodeSpec extends WordSpec with Matchers  {
 
   "A peer wire message" should {
 
+    "Encode Keepalive properly" in {
+      Keepalive.encode shouldEqual ByteBuffer.wrap(Array[Byte](0, 0, 0, 0))
+    }
+
     "Encode Choke properly" in {
       Choke.encode shouldEqual encodedMsg(MsgChoke)
     }
