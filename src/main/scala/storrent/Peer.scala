@@ -1,5 +1,21 @@
 package storrent
 
+import java.net.InetAddress
+import java.nio.ByteBuffer
+
+object Peer {
+
+  def parseCompact(data: Array[Byte]): Peer = {
+    val b = ByteBuffer.wrap(data)
+
+    val addrData = new Array[Byte](4)
+    b.get(addrData)
+    val addr = InetAddress.getByAddress(addrData)
+
+    Peer("", addr.getHostAddress, b.getShort())
+  }
+
+}
 
 case class Peer(id: String, ip: String, port: Int) {
 
@@ -10,11 +26,10 @@ case class Peer(id: String, ip: String, port: Int) {
   *  http://www.bittorrent.org/beps/bep_0023.html
   */
   def compact: Array[Byte] = {
-      val result = Array.fill[Byte](6)(0)
-      ip.split('.').map(_.toByte).copyToArray(result)
-      result(4) = ((port >> 8) & 0xff).toByte
-      result(5) = (port & 0xff).toByte
-      result
+    val result = ByteBuffer.allocate(6)
+    result.put(InetAddress.getByName(ip).getAddress)
+    result.putShort(port.toShort)
+    result.array()
   }
 
 
