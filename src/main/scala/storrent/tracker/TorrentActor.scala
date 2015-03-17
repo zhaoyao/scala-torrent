@@ -1,6 +1,6 @@
 package storrent.tracker
 
-import akka.actor.{Actor, ActorLogging}
+import akka.actor.{ Actor, ActorLogging }
 import storrent.Peer
 import storrent.tracker.TorrentStateActor.PeerUpdate
 
@@ -14,7 +14,6 @@ object TorrentStateActor {
                         left: Long)
 
 }
-
 
 class TorrentStateActor(infoHash: String) extends Actor with ActorLogging {
 
@@ -40,7 +39,7 @@ class TorrentStateActor(infoHash: String) extends Actor with ActorLogging {
   }
 
   override def receive: Receive = {
-    case u@PeerUpdate(ih, peer, e, _, _, _) => e match {
+    case u @ PeerUpdate(ih, peer, e, _, _, _) => e match {
       case Some("stopped") =>
         peers -= peer.id
         sender() ! Nil

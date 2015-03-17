@@ -1,9 +1,9 @@
 package storrent.tracker
 
-import akka.actor.{ActorPath, ActorSelection, ActorSystem}
+import akka.actor.{ ActorPath, ActorSelection, ActorSystem }
 import akka.io.Inet
 import spray.can.server.ServerSettings
-import spray.routing.{Directives, SimpleRoutingApp}
+import spray.routing.{ Directives, SimpleRoutingApp }
 
 import scala.collection.immutable
 import scala.util.Properties
@@ -26,17 +26,16 @@ object Stracker {
     val webPort = Properties.envOrElse("PORT", "8080").toInt
 
     implicit val s = system
-    new SimpleRoutingApp{}
+    new SimpleRoutingApp {}
       .startServer("0.0.0.0", webPort)(new StrackerRoute(system, torrentManager.path).route)
 
   }
-
 
 }
 
 class StrackerRoute(val system: ActorSystem,
                     val torrentManagerPath: ActorPath) extends Directives
-  with TrackerRoute {
+    with TrackerRoute {
 
   override val torrentManger: ActorSelection = system.actorSelection(torrentManagerPath)
 

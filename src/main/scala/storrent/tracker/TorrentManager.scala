@@ -1,6 +1,6 @@
 package storrent.tracker
 
-import akka.actor.{Actor, ActorRef, ActorSystem, Props}
+import akka.actor.{ Actor, ActorRef, ActorSystem, Props }
 import akka.pattern._
 import akka.util.Timeout
 import storrent.tracker.TorrentStateActor.PeerUpdate
@@ -25,7 +25,7 @@ class TorrentManager extends Actor {
   implicit val timeout = Timeout(5.seconds)
 
   override def receive: Receive = {
-    case u@PeerUpdate(ih, p, _, _, _, _) =>
+    case u @ PeerUpdate(ih, p, _, _, _, _) =>
       val state = torrentStates.getOrElseUpdate(ih,
         context.actorOf(Props(new TorrentStateActor(ih))))
       pipe(state ? u).to(sender())

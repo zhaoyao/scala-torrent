@@ -1,6 +1,6 @@
 package storrent.client
 
-import akka.actor.{Props, Actor, ActorLogging, ActorRef}
+import akka.actor.{ Props, Actor, ActorLogging, ActorRef }
 import akka.pattern._
 import storrent.Torrent
 
@@ -26,13 +26,13 @@ class Announcer(peerId: String,
 
   val multitrackerStrategy = (torrent.announce, torrent.announceList) match {
     case (t, Nil) =>
-      new SingleTracker(t)
+      new SingleTracker(context.system, t)
     case (t, trackers) if trackers.forall(_.size == 1) =>
-      new TryAll(trackers.map(_(0)))
+      new TryAll(context.system, trackers.map(_(0)))
     case (t, trackers :: Nil) =>
-      new UseBest(trackers)
+      new UseBest(context.system, trackers)
     case (t, trackers) if trackers.size > 1 && trackers.forall(_.size >= 1) =>
-      new PreferFirstTier(trackers.head, trackers.tail)
+      new PreferFirstTier(context.system, trackers.head, trackers.tail)
   }
 
   override def receive: Receive = {

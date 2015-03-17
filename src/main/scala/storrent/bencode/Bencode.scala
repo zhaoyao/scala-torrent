@@ -1,7 +1,7 @@
 package storrent.bencode
 
 import scala.util.Try
-import scala.util.parsing.combinator.{ImplicitConversions, Parsers}
+import scala.util.parsing.combinator.{ ImplicitConversions, Parsers }
 
 class MalformedBencodeException(msg: String) extends RuntimeException(msg)
 
@@ -43,7 +43,7 @@ object BencodeDecoder extends ParserGenerator with ImplicitConversions {
 
   def decode(in: String): Try[Any] =
     doc(in) match {
-      case Success(v, _)     => util.Success(v)
+      case Success(v, _) => util.Success(v)
       case NoSuccess(msg, _) =>
         util.Failure(new MalformedBencodeException(msg))
     }
@@ -91,13 +91,13 @@ object BencodeEncoder {
    */
   def encode(input: Any): String =
     input match {
-      case x: Int       => int(x)
-      case x: Long      => int(x)
-      case x: String    => string(x)
+      case x: Int         => int(x)
+      case x: Long        => int(x)
+      case x: String      => string(x)
       case x: Array[Byte] => string(new String(x, "utf-8"))
-      case x: List[_]   => list(x)
-      case x: Map[_, _] => dictionary(x.asInstanceOf[Map[String, _]])
-      case x            => throw new RuntimeException("Unable to encode data: " + x)
+      case x: List[_]     => list(x)
+      case x: Map[_, _]   => dictionary(x.asInstanceOf[Map[String, _]])
+      case x              => throw new RuntimeException("Unable to encode data: " + x)
     }
 
   def int(input: Int): String =

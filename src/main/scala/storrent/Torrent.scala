@@ -3,9 +3,9 @@ package storrent
 import java.security.MessageDigest
 
 import storrent.TorrentFiles.TorrentFile
-import storrent.bencode.{BencodeDecoder, BencodeEncoder}
+import storrent.bencode.{ BencodeDecoder, BencodeEncoder }
 
-import scala.util.{Failure, Try}
+import scala.util.{ Failure, Try }
 
 object Torrent {
 
@@ -15,12 +15,12 @@ object Torrent {
       .orElse(fields.get(key)).asInstanceOf[Option[String]]
 
   /**
-    * 解析原始bencode数据
-    */
+   * 解析原始bencode数据
+   */
   def apply(data: String): Try[Torrent] = {
     BencodeDecoder.decode(data).flatMap {
       case fields: Map[_, _] => apply(fields.asInstanceOf[Map[String, Any]])
-      case _ => Failure(new MalformedTorrentException)
+      case _                 => Failure(new MalformedTorrentException)
     }
   }
 
@@ -80,7 +80,7 @@ class InfoDict(fields: Map[String, Any]) {
   val hashRaw: Array[Byte] = Util.sha1(BencodeEncoder.encode(fields))
 }
 
-class Torrent private(fields: Map[String, Any]) {
+class Torrent private (fields: Map[String, Any]) {
 
   val announce: String = fields("announce").asInstanceOf[String]
   val announceList: List[List[String]] = fields.getOrElse("announce-list", Nil).asInstanceOf[List[List[String]]]

@@ -1,3 +1,5 @@
+import scalariform.formatter.preferences._
+
 name := "storrent"
 
 version := "1.0"
@@ -18,16 +20,26 @@ libraryDependencies := Seq(
   "org.scalatest" %% "scalatest" % "2.2.2" % "test",
   "com.typesafe.akka" %% "akka-testkit" % "2.3.8" % "test"
 )
-//
-//scalacOptions ++= Seq(
-//  "-unchecked",
-//  "-deprecation",
-//  "-Xlint",
-//  "-Ywarn-dead-code",
-////  "-Ylog-classpath",
-//  "-language:_",
-//  "-target:jvm-1.7",
-//  "-encoding", "UTF-8"
-//)
+
+scalacOptions ++= Seq(
+  "-unchecked",
+  "-deprecation",
+  "-Xlint",
+  "-Ywarn-dead-code",
+  "-feature",
+//  "-Ylog-classpath",
+  "-language:_",
+  "-target:jvm-1.7",
+  "-encoding", "UTF-8"
+)
+
+scalariformSettings
+
+ScalariformKeys.preferences := ScalariformKeys.preferences.value
+  .setPreference(AlignParameters, true)
+  .setPreference(AlignSingleLineCaseStatements, true)
+  .setPreference(DoubleIndentClassDeclaration, true)
+  .setPreference(PreserveDanglingCloseParenthesis, true)
+  .setPreference(SpacesWithinPatternBinders, true)
 
 lazy val storrent = project.in(file("."))

@@ -1,9 +1,9 @@
 package storrent.store
 
-import akka.actor.{Actor, ActorRef, ActorSystem, Props}
+import akka.actor.{ Actor, ActorRef, ActorSystem, Props }
 import akka.pattern._
 import storrent.Torrent
-import storrent.store.TorrentStoreActorMessages.{StoreTorrent, GetTorrent}
+import storrent.store.TorrentStoreActorMessages.{ StoreTorrent, GetTorrent }
 
 import scala.concurrent.Future
 
@@ -40,9 +40,9 @@ object TorrentStoreActor {
 class TorrentStoreActor(store: TorrentStore) extends Actor {
 
   import context.dispatcher
-  
+
   override def receive: Receive = {
-    case StoreTorrent(t) => store.put(t)
+    case StoreTorrent(t)      => store.put(t)
     case GetTorrent(infohash) => pipe(store.get(infohash)).to(sender())
   }
 

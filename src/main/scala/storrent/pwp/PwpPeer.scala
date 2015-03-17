@@ -2,9 +2,10 @@ package storrent.pwp
 
 import akka.actor._
 import akka.pattern._
+import akka.util.Timeout
 import storrent.client.Announcer.Announce
-import storrent.client.{Announcer, TrackerResponse}
-import storrent.{Peer, PeerId, Torrent}
+import storrent.client.{ Announcer, TrackerResponse }
+import storrent.{ Peer, PeerId, Torrent }
 
 import scala.collection.mutable
 import scala.concurrent.Future
@@ -25,14 +26,14 @@ class PwpPeer(torrent: Torrent,
   val peerConns = new mutable.HashMap[String, ActorRef]()
   val id = PeerId()
 
+  implicit val announceTimeout = Timeout(5.minutes)
   val announcer = context.actorOf(Announcer.props(id, port, torrent, self))
 
   //TODO @stats(downloaded, uploaded) 如果这个采集器放在这里，那么就不够抽象了
   // 创建一个 TorrentStats 接口，在 TorrentHandler/PieceHandler的相关方法中传入，暴露修改接口
 
-
   def announce(uploaded: Int, downloaded: Int, left: Int, event: String = ""): Future[List[Peer]] = {
-    val resp = (announcer ? Announce(uploaded, downloaded, left, event)).mapTo[TrackerResponse]
+    val resp = (announcer ? Announce(uploaded, downloaded, left, event))(announceTimeout).mapTo[TrackerResponse]
     resp.onSuccess {
       case resp =>
         context.system.scheduler.scheduleOnce(resp.interval.seconds, self, DoAnnounce)
@@ -40,7 +41,6 @@ class PwpPeer(torrent: Torrent,
 
     resp.map(_.peers)
   }
-
 
   override def preStart(): Unit = {
     //TODO start peer tcp listening
@@ -57,8 +57,8 @@ class PwpPeer(torrent: Torrent,
       }
 
     case (p: Peer, msg: Message) =>
-      // handle pwp message
-      // TorrentHandler ? PieceHandler ?
+    // handle pwp message
+    // TorrentHandler ? PieceHandler ?
 
     case Terminated(c) =>
       peerConns.retain((_, p) => p != c)

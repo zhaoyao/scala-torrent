@@ -1,10 +1,10 @@
 package storrent
 
-import java.io.{File, FileInputStream, FileNotFoundException, RandomAccessFile}
+import java.io.{ File, FileInputStream, FileNotFoundException, RandomAccessFile }
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
-import storrent.TorrentFiles.{Piece, TorrentFile}
+import storrent.TorrentFiles.{ Piece, TorrentFile }
 
 object TorrentFiles {
 
@@ -29,8 +29,7 @@ object TorrentFiles {
         md.update(b, 0, len)
         len = is.read(b)
       }
-    }
-    finally {
+    } finally {
       is.close()
     }
 
@@ -167,7 +166,6 @@ object TorrentFiles {
     null
   }
 }
-
 
 case class TorrentFiles(files: List[TorrentFile],
                         pieces: List[Piece],

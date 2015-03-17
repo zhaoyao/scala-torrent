@@ -16,8 +16,6 @@ object MessageDecoder {
 
 }
 
-
-
 /**
  * ** NOT THREAD SAFE
  */
@@ -50,18 +48,18 @@ class MessageDecoder(maxMessageLength: Int = 1024 * 1024 * 5) {
     }
 
     val msg = msgId match {
-      case MsgChoke => Choke
-      case MsgUnchoke => Unchoke
-      case MsgInterested => Interested
+      case MsgChoke        => Choke
+      case MsgUnchoke      => Unchoke
+      case MsgInterested   => Interested
       case MsgUninterested => Uninterested
-      case MsgHave => Have(payloadBuffer.getInt)
+      case MsgHave         => Have(payloadBuffer.getInt)
       case MsgBitfield => {
         val pieces = ArrayBuffer[Int]()
         for (i <- 0 until payloadBuffer.limit) {
           val mark = payloadBuffer.get(i)
           for (bit <- 0 until 8) {
             if (((mark & 0x01 << bit) >> bit) == 1) {
-              pieces += i * 8 + (8-bit)
+              pieces += i * 8 + (8 - bit)
             }
           }
         }

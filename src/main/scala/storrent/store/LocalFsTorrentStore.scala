@@ -1,6 +1,6 @@
 package storrent.store
 
-import java.io.{File, FileOutputStream}
+import java.io.{ File, FileOutputStream }
 import java.nio.file.Paths
 
 import akka.actor.Actor
@@ -23,7 +23,7 @@ class LocalFsTorrentStore(storeDir: String) extends TorrentStore {
     val f = torrentFile(infoHash)
 
     f.exists() match {
-      case true => Some(Source.fromFile(f).mkString)
+      case true  => Some(Source.fromFile(f).mkString)
       case false => None
     }
   }

@@ -1,16 +1,16 @@
 package storrent.tracker
 
-import akka.actor.{ActorSelection, ActorSystem}
+import akka.actor.{ ActorSelection, ActorSystem }
 import akka.pattern._
 import akka.util.Timeout
 import spray.http.MediaType
 import spray.routing.Directives
-import storrent.{Util, Peer}
+import storrent.{ Util, Peer }
 import TorrentStateActor.PeerUpdate
 import storrent.bencode.BencodeEncoder
 
 import scala.concurrent.duration.DurationInt
-import scala.util.{Failure, Success}
+import scala.util.{ Failure, Success }
 
 /**
  * User: zhaoyao
@@ -20,7 +20,6 @@ import scala.util.{Failure, Success}
 trait TrackerRoute {
   _: Directives =>
 
-
   //  import spray.routing.directives.OnSuccessFutureMagnet._
 
   val system: ActorSystem
@@ -29,7 +28,6 @@ trait TrackerRoute {
   import system.dispatcher
 
   implicit val timeout = Timeout(5.seconds)
-
 
   def trackerApi = {
 
@@ -52,42 +50,42 @@ trait TrackerRoute {
           'event.as[Option[String]],
           'compact.as[Option[Int]]
         ) { (infoHash, peerId, ip, port, uploaded, downloaded, left, event, compact) =>
-          //TODO guess ip address
-//          val (pid, peerAddr) = if (port.get == 7777) {
-//            ("abcdefg", ("127.0.0.1", 7777))
-//          } else {
-//            (peerId, ip.flatMap(ip => port.map(port => (ip, port))))
-//          }
+            //TODO guess ip address
+            //          val (pid, peerAddr) = if (port.get == 7777) {
+            //            ("abcdefg", ("127.0.0.1", 7777))
+            //          } else {
+            //            (peerId, ip.flatMap(ip => port.map(port => (ip, port))))
+            //          }
 
-          val infoHashHex = Util.encodeHex(infoHash.getBytes)
-          val update = PeerUpdate(infoHashHex, Peer(peerId, "", port.get), event, uploaded, downloaded, left)
-          val result = (torrentManger ? update).mapTo[List[Peer]].map { peers =>
-            if (!compact.isDefined || compact.get == 0) {
-              peers.map(peer => Map(
-                "peer_id" -> peer.id,
-                "ip" -> peer.ip,
-                "port" -> peer.port
-              ))
-            } else {
-              val r = Array.concat(peers.map(_.compact).toSeq: _*)
-              new String(r, "ascii")
+            val infoHashHex = Util.encodeHex(infoHash.getBytes)
+            val update = PeerUpdate(infoHashHex, Peer(peerId, "", port.get), event, uploaded, downloaded, left)
+            val result = (torrentManger ? update).mapTo[List[Peer]].map { peers =>
+              if (!compact.isDefined || compact.get == 0) {
+                peers.map(peer => Map(
+                  "peer_id" -> peer.id,
+                  "ip" -> peer.ip,
+                  "port" -> peer.port
+                ))
+              } else {
+                val r = Array.concat(peers.map(_.compact).toSeq: _*)
+                new String(r, "ascii")
+              }
+            }
+
+            onComplete(result) {
+              case Success(peers) =>
+                val resp = BencodeEncoder.encode(Map(
+                  "interval" -> 5 * 60,
+                  "peers" -> peers
+                ))
+
+                complete(resp)
+              case Failure(e) =>
+                complete(BencodeEncoder.encode(Map(
+                  "failure" -> e.getMessage
+                )))
             }
           }
-
-          onComplete(result) {
-            case Success(peers) =>
-              val resp = BencodeEncoder.encode(Map(
-                "interval" -> 5 * 60,
-                "peers" -> peers
-              ))
-
-              complete(resp)
-            case Failure(e) =>
-              complete(BencodeEncoder.encode(Map(
-                "failure" -> e.getMessage
-              )))
-          }
-        }
 
       }
     }

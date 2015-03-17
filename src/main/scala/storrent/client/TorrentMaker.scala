@@ -1,10 +1,10 @@
 package storrent.client
 
 import java.io.File
-import java.io.{FileInputStream, File, FileNotFoundException}
+import java.io.{ FileInputStream, File, FileNotFoundException }
 import java.nio.ByteBuffer
 import java.nio.file.Path
-import java.security.{DigestInputStream, MessageDigest}
+import java.security.{ DigestInputStream, MessageDigest }
 
 import akka.util.ByteString
 import storrent.Torrent
@@ -28,8 +28,7 @@ object TorrentMaker {
         md.update(b, 0, len)
         len = is.read(b)
       }
-    }
-    finally {
+    } finally {
       is.close()
     }
 

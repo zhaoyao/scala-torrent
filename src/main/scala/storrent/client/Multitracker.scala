@@ -1,16 +1,20 @@
 package storrent.client
 
+import akka.actor.ActorSystem
 import spray.client.pipelining._
-import spray.http.{HttpRequest, HttpResponse, Uri}
+import spray.http.{ HttpRequest, HttpResponse, Uri }
 import storrent.Peer
 import storrent.bencode.BencodeDecoder
 
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.{ ExecutionContext, Future }
 
 /**
  * Multi Tracker Extension: http://www.bittorrent.org/beps/bep_0012.html
  */
 sealed trait MultitrackerStrategy {
+
+  implicit val system: ActorSystem
+  import system.dispatcher
 
   def announce(infoHash: String,
                peerId: String,
@@ -19,7 +23,6 @@ sealed trait MultitrackerStrategy {
                downloaded: Int,
                left: Int,
                event: String = ""): Future[TrackerResponse]
-
 
   def doAnnounce(tracker: Uri,
                  infoHash: String,
@@ -30,10 +33,10 @@ sealed trait MultitrackerStrategy {
                  left: Int,
                  event: String): Future[TrackerResponse] = {
     tracker match {
-      case u@(Uri("http", _, _, _, _) | Uri("https", _, _, _, _)) =>
+      case u @ (Uri("http", _, _, _, _) | Uri("https", _, _, _, _)) =>
         httpAnnounce(u, infoHash, peerId, port, uploaded, downloaded, left, event)
 
-      case u@Uri("udp", _, _, _, _) =>
+      case u @ Uri("udp", _, _, _, _) =>
         //todo udp tracker announcement
         Future.failed(new NotImplementedError())
     }
@@ -63,7 +66,7 @@ sealed trait MultitrackerStrategy {
     pipeline(Get(uri)).flatMap { resp =>
       BencodeDecoder.decode(resp.entity.asString) match {
         case m: Map[_, _] => Future.successful(handleTrackerResponse(m.asInstanceOf[Map[String, Any]]))
-        case _ => Future.failed(new RuntimeException("Invalid tracker response"))
+        case _            => Future.failed(new RuntimeException("Invalid tracker response"))
       }
     }
   }
@@ -80,7 +83,7 @@ sealed trait MultitrackerStrategy {
     val peers = response("peers").asInstanceOf[List[_]].map {
       case compacted: String =>
         Peer.parseCompact(compacted.getBytes("ISO-8859-1"))
-      case fields: Map[String, _] =>
+      case fields: Map[String @unchecked, _] =>
         //TODO 如何实现的更优雅一些，感觉从bencode库入手比较好，去看json4s的代码
         Peer(
           fields.get("id").asInstanceOf[String],
@@ -91,10 +94,9 @@ sealed trait MultitrackerStrategy {
     TrackerResponse(interval, peers, complete, incomplete)
   }
 
-
 }
 
-class SingleTracker(onlyTracker: String) extends MultitrackerStrategy {
+class SingleTracker(val system: ActorSystem, onlyTracker: String) extends MultitrackerStrategy {
 
   override def announce(infoHash: String,
                         peerId: String,
@@ -108,7 +110,8 @@ class SingleTracker(onlyTracker: String) extends MultitrackerStrategy {
 }
 
 // d['announce-list'] = [ [tracker1], [backup1], [backup2] ]
-class TryAll(trackers: List[String])(implicit ec: ExecutionContext) extends MultitrackerStrategy {
+class TryAll(val system: ActorSystem, trackers: List[String]) extends MultitrackerStrategy {
+  import system.dispatcher
 
   override def announce(infoHash: String,
                         peerId: String,
@@ -128,12 +131,12 @@ class TryAll(trackers: List[String])(implicit ec: ExecutionContext) extends Mult
 
       val complete = responses.filter(_.complete.isDefined) match {
         case Nil => None
-        case xs => Some(xs.map(_.complete.get).sum)
+        case xs  => Some(xs.map(_.complete.get).sum)
       }
 
       val incomplete = responses.filter(_.incomplete.isDefined) match {
         case Nil => None
-        case xs => Some(xs.map(_.incomplete.get).sum)
+        case xs  => Some(xs.map(_.incomplete.get).sum)
       }
 
       TrackerResponse(interval, peers.toList, complete, incomplete)
@@ -142,7 +145,8 @@ class TryAll(trackers: List[String])(implicit ec: ExecutionContext) extends Mult
 }
 
 // d['announce-list'] = [[ tracker1, tracker2, tracker3 ]]
-class UseBest(trackers: List[String]) extends MultitrackerStrategy {
+class UseBest(val system: ActorSystem, trackers: List[String]) extends MultitrackerStrategy {
+  import system.dispatcher
 
   var current = trackers
 
@@ -169,13 +173,13 @@ class UseBest(trackers: List[String]) extends MultitrackerStrategy {
       doAnnounce(Uri(trackers.head), infoHash, peerId, port, uploaded, downloaded, left, event)
         .map(r => (r, trackers.head))
         .recoverWith {
-        case e =>
-          if (current.tail.isEmpty) {
-            Future.failed(new RuntimeException("All tracker failed"))
-          } else {
-            tryAnnounce(current.tail, infoHash, peerId, port, uploaded, downloaded, left, event)
-          }
-      }
+          case e =>
+            if (current.tail.isEmpty) {
+              Future.failed(new RuntimeException("All tracker failed"))
+            } else {
+              tryAnnounce(current.tail, infoHash, peerId, port, uploaded, downloaded, left, event)
+            }
+        }
     }
 
     val ret = tryAnnounce(current, infoHash, peerId, port, uploaded, downloaded, left, event)
@@ -193,7 +197,7 @@ class UseBest(trackers: List[String]) extends MultitrackerStrategy {
 }
 
 // d['announce-list'] = [ [ tracker1, tracker2 ], [backup1] ]
-class PreferFirstTier(firstTiers: List[String], backups: List[List[String]]) extends MultitrackerStrategy {
+class PreferFirstTier(val system: ActorSystem, firstTiers: List[String], backups: List[List[String]]) extends MultitrackerStrategy {
   override def announce(infoHash: String, peerId: String, port: Int, uploaded: Int, downloaded: Int, left: Int, event: String): Future[TrackerResponse] = ???
 }
 

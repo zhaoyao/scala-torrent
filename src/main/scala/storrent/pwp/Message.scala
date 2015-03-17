@@ -18,7 +18,7 @@ sealed trait Message {
     val length = 4 + 1 + payloadLength
     val buffer = ByteBuffer.allocate(length)
 
-    buffer.putInt(length-4) // exclude length header itself
+    buffer.putInt(length - 4) // exclude length header itself
     if (length > 4) {
       buffer.put(this.id)
     }
@@ -112,7 +112,6 @@ object Message {
       }
       b.put(bitfield)
     }
-
 
   }
 

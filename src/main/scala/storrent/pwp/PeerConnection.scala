@@ -5,14 +5,14 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 import akka.actor._
 import akka.io.Tcp._
-import akka.io.{IO, Tcp}
+import akka.io.{ IO, Tcp }
 import akka.util.ByteString
 import storrent.pwp.Message._
-import storrent.{Peer, PeerId}
+import storrent.{ Peer, PeerId }
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.DurationInt
-import scala.util.{Failure, Success, Try}
+import scala.util.{ Failure, Success, Try }
 
 object PeerConnection {
 
@@ -43,13 +43,12 @@ class PeerConnection(infoHash: String,
   override def receive: Receive = connecting
 
   def connecting: Receive = {
-    case c@Connected(remote, local) =>
+    case c @ Connected(remote, local) =>
       val conn = sender()
       conn ! Register(self)
 
       conn ! Write(ByteString(handshake.encode))
-      //TODO detect handshake timeout
-
+    //TODO detect handshake timeout
 
     case Received(data) =>
       Try(Handshake.parse(data)) match {
@@ -106,24 +105,24 @@ class PeerConnection(infoHash: String,
     decodeMessage(data).foreach {
       case Choke =>
         this.choked.set(true)
-        torrentClient !(targetPeer, Choke)
+        torrentClient ! Tuple2(targetPeer, Choke)
 
       case Unchoke =>
         this.choked.set(false)
-        torrentClient !(targetPeer, Unchoke)
+        torrentClient ! Tuple2(targetPeer, Unchoke)
 
       case Interested =>
         this.interested.set(true)
-        torrentClient !(targetPeer, Interested)
+        torrentClient ! Tuple2(targetPeer, Interested)
 
       case Uninterested =>
         this.interested.set(false)
-        torrentClient !(targetPeer, Uninterested)
+        torrentClient ! Tuple2(targetPeer, Uninterested)
 
       case msg =>
         log.info("Pwp message => {}", msg)
-          // should we let torrent client handle peer timeout ?
-        torrentClient !(targetPeer, msg)
+        // should we let torrent client handle peer timeout ?
+        torrentClient ! Tuple2(targetPeer, msg)
     }
   }
 
@@ -131,7 +130,7 @@ class PeerConnection(infoHash: String,
   private def decodeMessage(data: ByteString, messages: List[Message] = Nil): List[Message] =
     decoder.decode(data) match {
       case (Some(msg), remaining) => decodeMessage(remaining, msg :: messages)
-      case (None, _) => messages.reverse
+      case (None, _)              => messages.reverse
     }
 
 }
