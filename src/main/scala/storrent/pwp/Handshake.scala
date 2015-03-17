@@ -10,7 +10,6 @@ import scala.Predef
 
 object Handshake {
 
-  case class ReservedBit(i: Int, value: Byte)
   object ReservedBits {
     val BEP_6_FastExtension = ReservedBit(7, 0x04)
     val BEP_10_ExtensionProtocol = ReservedBit(5, 0x10)

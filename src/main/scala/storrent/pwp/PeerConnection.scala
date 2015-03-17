@@ -5,14 +5,15 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 import akka.actor._
 import akka.io.Tcp._
-import akka.io.{ IO, Tcp }
+import akka.io.{IO, Tcp}
 import akka.util.ByteString
+import storrent.Peer
+import storrent.extension.HandshakeEnabled
 import storrent.pwp.Message._
-import storrent.{ Peer, PeerId }
 
 import scala.annotation.tailrec
 import scala.concurrent.duration.DurationInt
-import scala.util.{ Failure, Success, Try }
+import scala.util.{Failure, Success, Try}
 
 object PeerConnection {
 
@@ -23,11 +24,12 @@ object PeerConnection {
 
 class PeerConnection(infoHash: String,
                      selfPeerId: String,
-                     targetPeer: Peer) extends Actor with ActorLogging with Stash {
+                     targetPeer: Peer,
+                     handshakeExtensions: Set[HandshakeEnabled]) extends Actor with ActorLogging with Stash {
 
   import context.dispatcher
 
-  val decoder = new MessageDecoder()
+  var decoder: MessageDecoder = _
   val handshake: Handshake = Handshake(infoHash, selfPeerId)
 
   val torrentClient = context.parent
@@ -43,7 +45,7 @@ class PeerConnection(infoHash: String,
   override def receive: Receive = connecting
 
   def connecting: Receive = {
-    case c @ Connected(remote, local) =>
+    case c@Connected(remote, local) =>
       val conn = sender()
       conn ! Register(self)
 
@@ -58,6 +60,9 @@ class PeerConnection(infoHash: String,
             context stop self
 
           } else {
+
+            decoder = new MessageDecoder(handshakeExtensions.filter(_.isEnabled(hs)))
+
             handleInboundData(remaining)
             context become connected(sender())
             unstashAll()
@@ -130,7 +135,7 @@ class PeerConnection(infoHash: String,
   private def decodeMessage(data: ByteString, messages: List[Message] = Nil): List[Message] =
     decoder.decode(data) match {
       case (Some(msg), remaining) => decodeMessage(remaining, msg :: messages)
-      case (None, _)              => messages.reverse
+      case (None, _) => messages.reverse
     }
 
 }

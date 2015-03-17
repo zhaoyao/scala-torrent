@@ -9,7 +9,7 @@ import akka.util.ByteString
  * Date: 3/13/15
  * Time: 17:28
  */
-sealed trait Message {
+trait Message {
   def id: Byte
   def payloadLength: Int = 0
   def fillPayload(b: ByteBuffer) {}

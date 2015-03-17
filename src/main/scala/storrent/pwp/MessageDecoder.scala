@@ -3,8 +3,10 @@ package storrent.pwp
 import java.nio.ByteBuffer
 
 import akka.util.ByteString
+import storrent.extension.{AdditionalMessageDecoding, HandshakeEnabled}
 
 import scala.collection.mutable.ArrayBuffer
+import scala.util.{Success, Try}
 
 class MessageTooLargeException extends RuntimeException
 
@@ -19,7 +21,8 @@ object MessageDecoder {
 /**
  * ** NOT THREAD SAFE
  */
-class MessageDecoder(maxMessageLength: Int = 1024 * 1024 * 5) {
+class MessageDecoder(extensions: Set[AdditionalMessageDecoding],
+                     maxMessageLength: Int = 1024 * 1024 * 5) {
 
   import storrent.pwp.MessageDecoder._
 
@@ -41,45 +44,53 @@ class MessageDecoder(maxMessageLength: Int = 1024 * 1024 * 5) {
 
   import storrent.pwp.Message._
 
-  private def decodeMessage(): Message = {
+  val builtInMessages: PartialFunction[(Byte, ByteBuffer), Try[Message]] =  {
+    case (MsgChoke, _) => Success(Choke)
+    case (MsgUnchoke, _) => Success(Unchoke)
+    case (MsgInterested, _) => Success(Interested)
+    case (MsgUninterested, _) => Success(Uninterested)
+    case (MsgHave, _) => Success(Have(payloadBuffer.getInt))
+    case (MsgBitfield, payload) =>
+      val pieces = ArrayBuffer[Int]()
+      for (i <- 0 until payload.limit) {
+        val mark = payload.get(i)
+        for (bit <- 0 until 8) {
+          if (((mark & 0x01 << bit) >> bit) == 1) {
+            pieces += i * 8 + (8 - bit)
+          }
+        }
+      }
+      Success(Bitfield(pieces.toSet))
+    case (MsgRequest, payload) =>
+      Success(Request(payload.getInt, payload.getInt, payload.getInt))
+    case (MsgPiece, payload) =>
+      val pieceIndex = payload.getInt
+      val blockOffset = payload.getInt
+      val blockLength = payload.limit() - 8
+      val block = new Array[Byte](blockLength)
+      payload.get(block)
+      Success(Piece(pieceIndex, blockOffset, block))
+    case (MsgCancel, payload) =>
+      Success(Cancel(payload.getInt, payload.getInt, payload.getInt))
+  }
+
+  val decodeMessage0 = extensions.foldLeft(builtInMessages) { (s, d) => s.orElse(d.parseMessage) }
+
+  private def decodeMessage(): Option[Message] = {
     assert(payloadBuffer == null || payloadBuffer.remaining() == 0)
     if (payloadBuffer != null) {
       payloadBuffer.rewind()
     }
 
-    val msg = msgId match {
-      case MsgChoke        => Choke
-      case MsgUnchoke      => Unchoke
-      case MsgInterested   => Interested
-      case MsgUninterested => Uninterested
-      case MsgHave         => Have(payloadBuffer.getInt)
-      case MsgBitfield => {
-        val pieces = ArrayBuffer[Int]()
-        for (i <- 0 until payloadBuffer.limit) {
-          val mark = payloadBuffer.get(i)
-          for (bit <- 0 until 8) {
-            if (((mark & 0x01 << bit) >> bit) == 1) {
-              pieces += i * 8 + (8 - bit)
-            }
-          }
-        }
-        Bitfield(pieces.toSet)
-      }
-      case MsgRequest =>
-        Request(payloadBuffer.getInt, payloadBuffer.getInt, payloadBuffer.getInt)
-      case MsgPiece =>
-        val pieceIndex = payloadBuffer.getInt
-        val blockOffset = payloadBuffer.getInt
-        val blockLength = payloadBuffer.limit() - 8
-        val block = new Array[Byte](blockLength)
-        payloadBuffer.get(block)
-        Piece(pieceIndex, blockOffset, block)
-      case MsgCancel =>
-        Cancel(payloadBuffer.getInt, payloadBuffer.getInt, payloadBuffer.getInt)
+    if (decodeMessage0.isDefinedAt((this.msgId, this.payloadBuffer))) {
+      val ret = decodeMessage0(this.msgId, this.payloadBuffer)
+      reset()
+      ret.toOption
+    } else {
+      //TODO handle unknown message logging or throw error?
+      reset()
+      None
     }
-
-    reset()
-    msg
   }
 
   def decode(data: ByteString): (Option[Message], ByteString) = {
@@ -120,7 +131,7 @@ class MessageDecoder(maxMessageLength: Int = 1024 * 1024 * 5) {
       case State_WANT_PAYLOAD =>
         if (this.msgLength == 1) {
           // no payload
-          return (Some(decodeMessage()), data)
+          return (decodeMessage(), data)
 
         } else {
           val payloadNeed = msgLength - 1 - payloadBuffer.position()
@@ -129,7 +140,7 @@ class MessageDecoder(maxMessageLength: Int = 1024 * 1024 * 5) {
           payloadBuffer.put(data.slice(0, payloadHave).toArray)
           if (payloadNeed == payloadHave) {
             // complete message decoding
-            return (Some(decodeMessage()), data.drop(payloadHave))
+            return (decodeMessage(), data.drop(payloadHave))
           } else {
             return (None, ByteString.empty)
           }
