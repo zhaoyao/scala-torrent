@@ -3,10 +3,10 @@ package storrent.pwp
 import java.nio.ByteBuffer
 
 import akka.util.ByteString
-import storrent.extension.{AdditionalMessageDecoding, HandshakeEnabled}
+import storrent.extension.{ AdditionalMessageDecoding, HandshakeEnabled }
 
 import scala.collection.mutable.ArrayBuffer
-import scala.util.{Success, Try}
+import scala.util.{ Success, Try }
 
 class MessageTooLargeException extends RuntimeException
 
@@ -21,7 +21,7 @@ object MessageDecoder {
 /**
  * ** NOT THREAD SAFE
  */
-class MessageDecoder(extensions: Set[AdditionalMessageDecoding],
+class MessageDecoder(extensions: Set[AdditionalMessageDecoding] = Set.empty,
                      maxMessageLength: Int = 1024 * 1024 * 5) {
 
   import storrent.pwp.MessageDecoder._
@@ -44,12 +44,12 @@ class MessageDecoder(extensions: Set[AdditionalMessageDecoding],
 
   import storrent.pwp.Message._
 
-  val builtInMessages: PartialFunction[(Byte, ByteBuffer), Try[Message]] =  {
-    case (MsgChoke, _) => Success(Choke)
-    case (MsgUnchoke, _) => Success(Unchoke)
-    case (MsgInterested, _) => Success(Interested)
+  val builtInMessages: PartialFunction[(Byte, ByteBuffer), Try[Message]] = {
+    case (MsgChoke, _)        => Success(Choke)
+    case (MsgUnchoke, _)      => Success(Unchoke)
+    case (MsgInterested, _)   => Success(Interested)
     case (MsgUninterested, _) => Success(Uninterested)
-    case (MsgHave, _) => Success(Have(payloadBuffer.getInt))
+    case (MsgHave, _)         => Success(Have(payloadBuffer.getInt))
     case (MsgBitfield, payload) =>
       val pieces = ArrayBuffer[Int]()
       for (i <- 0 until payload.limit) {
@@ -83,7 +83,7 @@ class MessageDecoder(extensions: Set[AdditionalMessageDecoding],
     }
 
     if (decodeMessage0.isDefinedAt((this.msgId, this.payloadBuffer))) {
-      val ret = decodeMessage0(this.msgId, this.payloadBuffer)
+      val ret = decodeMessage0((this.msgId, this.payloadBuffer))
       reset()
       ret.toOption
     } else {

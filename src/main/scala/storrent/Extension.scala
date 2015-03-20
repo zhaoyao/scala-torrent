@@ -2,7 +2,7 @@ package storrent
 
 import java.nio.ByteBuffer
 
-import storrent.pwp.{Handshake, Message}
+import storrent.pwp.{ Handshake, Message }
 
 /**
  * User: zhaoyao

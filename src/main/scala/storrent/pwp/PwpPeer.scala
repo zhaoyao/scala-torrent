@@ -35,11 +35,17 @@ class PwpPeer(torrent: Torrent,
   def announce(uploaded: Int, downloaded: Int, left: Int, event: String = ""): Future[List[Peer]] = {
     val resp = (announcer ? Announce(uploaded, downloaded, left, event))(announceTimeout).mapTo[TrackerResponse]
     resp.onSuccess {
-      case resp =>
-        context.system.scheduler.scheduleOnce(resp.interval.seconds, self, DoAnnounce)
+      case TrackerResponse.Success(interval, _, _, _) =>
+        context.system.scheduler.scheduleOnce(interval.seconds, self, DoAnnounce)
+
+      case TrackerResponse.Error(msg) =>
+      //TODO handle announce error
     }
 
-    resp.map(_.peers)
+    resp.flatMap {
+      case TrackerResponse.Success(_, peers, _, _) => Future.successful(peers)
+      case TrackerResponse.Error(msg)              => Future.failed(new RuntimeException("announce failed: " + msg))
+    }
   }
 
   override def preStart(): Unit = {
@@ -66,7 +72,7 @@ class PwpPeer(torrent: Torrent,
   }
 
   def createPeer(p: Peer): ActorRef = {
-    val c = context.actorOf(PeerConnection.props(torrent.info.hash, id, p), s"${torrent.info.hash}/${p.id}-conn")
+    val c = context.actorOf(PeerConnection.props(torrent.infoHash, id, p), s"${torrent.infoHash}/${p.id}-conn")
     context.watch(c)
     c
   }

@@ -14,8 +14,8 @@ trait MessageSpecBase {
   }
 
   def encodedMsg(id: Byte, payloadLength: Int)(f: ByteBuffer => Unit) = {
-    val b = ByteBuffer.allocate(4+1+payloadLength)
-    b.putInt(1+payloadLength)
+    val b = ByteBuffer.allocate(4 + 1 + payloadLength)
+    b.putInt(1 + payloadLength)
     b.put(id)
     f(b)
     b.rewind()

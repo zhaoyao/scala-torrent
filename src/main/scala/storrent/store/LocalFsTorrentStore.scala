@@ -42,7 +42,7 @@ class LocalFsTorrentStore(storeDir: String) extends TorrentStore {
   }
 
   override def put(torrent: Torrent): Future[Boolean] = {
-    val f = torrentFile(torrent.info.hash)
+    val f = torrentFile(torrent.infoHash)
     if (!f.exists()) {
       f.getParentFile.mkdirs()
       if (!f.createNewFile()) {
@@ -52,7 +52,7 @@ class LocalFsTorrentStore(storeDir: String) extends TorrentStore {
     Future {
       val out = new FileOutputStream(f)
       try {
-        out.write(torrent.toBencoding.getBytes)
+        out.write(torrent.raw.toByteArray())
         true
       } finally {
         out.close

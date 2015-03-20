@@ -24,14 +24,14 @@ class Announcer(peerId: String,
   import context.dispatcher
   import storrent.client.Announcer._
 
-  val multitrackerStrategy = (torrent.announce, torrent.announceList) match {
-    case (t, Nil) =>
+  val multitrackerStrategy = (torrent.metainfo.announce, torrent.metainfo.announceList) match {
+    case (t, None | Some(Nil)) =>
       new SingleTracker(context.system, t)
-    case (t, trackers) if trackers.forall(_.size == 1) =>
+    case (t, Some(trackers)) if trackers.forall(_.size == 1) =>
       new TryAll(context.system, trackers.map(_(0)))
-    case (t, trackers :: Nil) =>
+    case (t, Some(trackers :: Nil)) =>
       new UseBest(context.system, trackers)
-    case (t, trackers) if trackers.size > 1 && trackers.forall(_.size >= 1) =>
+    case (t, Some(trackers)) if trackers.size > 1 && trackers.forall(_.size >= 1) =>
       new PreferFirstTier(context.system, trackers.head, trackers.tail)
   }
 
@@ -39,7 +39,7 @@ class Announcer(peerId: String,
     case Announce(uploaded, downloaded, left, event) =>
       val response: Future[TrackerResponse] =
         multitrackerStrategy.announce(
-          new String(torrent.info.hashRaw, "ISO-8859-1"),
+          new String(torrent.infoHashRaw, "ISO-8859-1"),
           peerId, port,
           uploaded, downloaded, left, event
         )

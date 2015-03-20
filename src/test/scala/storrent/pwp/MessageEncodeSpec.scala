@@ -2,7 +2,7 @@ package storrent.pwp
 
 import java.nio.ByteBuffer
 
-import org.scalatest.{Matchers, WordSpec}
+import org.scalatest.{ Matchers, WordSpec }
 
 /**
  * User: zhaoyao
@@ -12,7 +12,6 @@ import org.scalatest.{Matchers, WordSpec}
 class MessageEncodeSpec extends WordSpec with Matchers with MessageSpecBase {
 
   import storrent.pwp.Message._
-
 
   "A peer wire message" should {
 
@@ -75,6 +74,5 @@ class MessageEncodeSpec extends WordSpec with Matchers with MessageSpecBase {
         }
     }
   }
-
 
 }

@@ -10,6 +10,7 @@ resolvers += Resolver.sonatypeRepo("snapshot")
 
 libraryDependencies := Seq(
   //  "com.wacai" %% "config-annotation" % "0.1-SNAPSHOT",
+  "com.github.zhaoyao" %% "sbencoding" % "0.1.0-SNAPSHOT",
   "org.scala-lang.modules" %% "scala-parser-combinators" % "1.0.3",
   "io.spray" %% "spray-client" % "1.3.2",
   "io.spray" %% "spray-routing" % "1.3.2",

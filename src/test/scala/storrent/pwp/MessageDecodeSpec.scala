@@ -4,7 +4,7 @@ import java.nio.ByteBuffer
 
 import akka.util.ByteString
 import org.scalatest.Inside._
-import org.scalatest.{Matchers, WordSpec}
+import org.scalatest.{ Matchers, WordSpec }
 
 /**
  * User: zhaoyao
@@ -78,7 +78,6 @@ class MessageDecodeSpec extends WordSpec with Matchers with MessageSpecBase {
           d.length shouldEqual 0
       }
     }
-
 
     "Decode Piece properly" in {
       inside(new MessageDecoder().decode(encodedMsg(MsgPiece, 9) { b =>

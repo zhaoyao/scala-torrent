@@ -2,7 +2,7 @@ package storrent
 
 import java.net.InetAddress
 
-import org.scalatest.{Matchers, WordSpec, FunSuite}
+import org.scalatest.{ Matchers, WordSpec, FunSuite }
 
 /**
  * User: zhaoyao
@@ -11,13 +11,12 @@ import org.scalatest.{Matchers, WordSpec, FunSuite}
  */
 class PeerSpec extends WordSpec with Matchers {
 
-
   "Peer compact encoding" should {
 
     "Encode successfully" in {
 
       Peer("", "192.168.1.1", 20).compact shouldEqual
-        InetAddress.getByName("192.168.1.1").getAddress ++ Array((20 >> 8 & 0xff).toByte, (20 & 0xff).toByte )
+        InetAddress.getByName("192.168.1.1").getAddress ++ Array((20 >> 8 & 0xff).toByte, (20 & 0xff).toByte)
 
     }
 
@@ -29,8 +28,6 @@ class PeerSpec extends WordSpec with Matchers {
       p.port shouldEqual 20
     }
 
-
   }
-
 
 }

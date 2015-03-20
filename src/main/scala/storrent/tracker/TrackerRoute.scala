@@ -5,9 +5,9 @@ import akka.pattern._
 import akka.util.Timeout
 import spray.http.MediaType
 import spray.routing.Directives
+import storrent.client.TrackerResponse
 import storrent.{ Util, Peer }
 import TorrentStateActor.PeerUpdate
-import storrent.bencode.BencodeEncoder
 
 import scala.concurrent.duration.DurationInt
 import scala.util.{ Failure, Success }
@@ -26,6 +26,8 @@ trait TrackerRoute {
   val torrentManger: ActorSelection
 
   import system.dispatcher
+  import sbencoding._
+  import TrackerResponse.BencodingProtocol
 
   implicit val timeout = Timeout(5.seconds)
 
@@ -59,34 +61,22 @@ trait TrackerRoute {
 
             val infoHashHex = Util.encodeHex(infoHash.getBytes)
             val update = PeerUpdate(infoHashHex, Peer(peerId, "", port.get), event, uploaded, downloaded, left)
-            val result = (torrentManger ? update).mapTo[List[Peer]].map { peers =>
-              if (!compact.isDefined || compact.get == 0) {
-                peers.map(peer => Map(
-                  "peer_id" -> peer.id,
-                  "ip" -> peer.ip,
-                  "port" -> peer.port
-                ))
-              } else {
-                val r = Array.concat(peers.map(_.compact).toSeq: _*)
-                new String(r, "ascii")
-              }
-            }
 
+            val compactPeer = !compact.isDefined || compact.get == 0
+
+            val result = (torrentManger ? update).mapTo[List[Peer]]
+
+            implicit val successFormat = TrackerResponse.BencodingProtocol.successFormat(compactPeer)
+            implicit val errorFormat = TrackerResponse.BencodingProtocol.errorFormat
+
+            //TODO spray-bencoding-support
             onComplete(result) {
               case Success(peers) =>
-                val resp = BencodeEncoder.encode(Map(
-                  "interval" -> 5 * 60,
-                  "peers" -> peers
-                ))
-
-                complete(resp)
+                complete(TrackerResponse.Success(3600, peers, None, None).toBencoding.toString)
               case Failure(e) =>
-                complete(BencodeEncoder.encode(Map(
-                  "failure" -> e.getMessage
-                )))
+                complete(TrackerResponse.Error(e.getMessage).toBencoding.toString)
             }
           }
-
       }
     }
   }

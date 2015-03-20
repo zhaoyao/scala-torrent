@@ -3,6 +3,8 @@ package storrent
 import java.net.InetAddress
 import java.nio.ByteBuffer
 
+import sbencoding.{ BcString, BcValue, RootBencodingFormat, DefaultBencodingProtocol }
+
 object Peer {
 
   def parseCompact(data: Array[Byte]): Peer = {
@@ -13,6 +15,31 @@ object Peer {
     val addr = InetAddress.getByAddress(addrData)
 
     Peer("", addr.getHostAddress, b.getShort())
+  }
+
+  implicit object BencodingProtocol extends DefaultBencodingProtocol {
+    import sbencoding._
+
+    implicit def peerFormat(compact: Boolean = true) = new RootBencodingFormat[Peer] {
+      override def write(obj: Peer): BcValue =
+        if (compact)
+          BcString(obj.compact)
+        else
+          BcDict("id" -> BcString(obj.id, "UTF-8"),
+            "ip" -> BcString(obj.ip, "UTF-8"),
+            "port" -> BcInt(obj.port))
+
+      override def read(bencoding: BcValue): Peer = bencoding match {
+        case BcString(data) if compact => parseCompact(data)
+        case x: BcDict if !compact => x.getFields("id", "ip", "port") match {
+          case Seq(BcString(id), BcString(ip), BcInt(port)) =>
+            Peer(new String(id), new String(ip), port.toInt)
+          case _ => deserializationError("Invalid peer dict" + x)
+        }
+        case x => deserializationError("Compact Peer expect BcString, but got: " + x)
+      }
+    }
+
   }
 
 }

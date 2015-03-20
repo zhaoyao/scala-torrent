@@ -12,7 +12,7 @@ import storrent.Torrent
 class TorrentClient(metainfo: Torrent) extends Actor with ActorLogging {
 
   override def preStart(): Unit = {
-    log.info("Starting TorrentClient[{}]", metainfo.info.hash)
+    log.info("Starting TorrentClient[{}]", metainfo.infoHash)
   }
 
   override def receive: Receive = {

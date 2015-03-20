@@ -39,7 +39,7 @@ class TorrentManager(torrentStore: ActorRef) extends Actor with ActorLogging {
     case StartTorrent(metainfoData) =>
       Torrent(metainfoData) match {
         case Success(metainfo) =>
-          val infoHash = metainfo.info.hash
+          val infoHash = metainfo.infoHash
           val client = torrentActors
             .getOrElseUpdate(infoHash, createTorrentClient(metainfo))
           sender ! TorrentStarted(client)

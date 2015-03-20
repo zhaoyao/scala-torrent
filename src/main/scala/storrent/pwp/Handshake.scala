@@ -4,16 +4,9 @@ import java.nio.ByteBuffer
 
 import akka.util.ByteString
 import storrent.Util
-import storrent.pwp.Handshake.ReservedBit
-
-import scala.Predef
+import storrent.extension.ReservedBit
 
 object Handshake {
-
-  object ReservedBits {
-    val BEP_6_FastExtension = ReservedBit(7, 0x04)
-    val BEP_10_ExtensionProtocol = ReservedBit(5, 0x10)
-  }
 
   def parse(data: ByteString): (Handshake, ByteString) = {
     val b = ByteBuffer.wrap(data.toArray)

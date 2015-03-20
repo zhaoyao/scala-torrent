@@ -2,12 +2,11 @@ package storrent.extension
 
 import java.nio.ByteBuffer
 
-import storrent.bencode.BencodeDecoder
+import sbencoding.DefaultBencodingProtocol
 import storrent.pwp.Message
 
 import scala.collection.mutable
-import scala.reflect.internal.Trees.Try
-import scala.util.{Try, Failure, Success}
+import scala.util.{ Try, Failure, Success }
 
 object bep_10 {
 
@@ -23,14 +22,19 @@ object bep_10 {
    *             the receiving side of the connection to send this extension message
    * @param reqq the number of outstanding request messages this client supports without dropping any
    */
-  case class Handshake(enabledExtensions: Map[String, Int],
-                       disabledExtensions: Set[String],
+  case class Handshake(extensions: Map[String, Int],
                        port: Option[Int] = None,
                        clientName: Option[String] = None,
                        ip: Option[String] = None,
-                       ipv6: Option[Array[Byte]] = None,
                        ipv4: Option[Array[Byte]] = None,
-                       reqq: Option[Int] = Some(250) /* libtorrent default value*/) extends Extended {
+                       ipv6: Option[Array[Byte]] = None,
+                       reqq: Option[Int] = Some(250) /* libtorrent default value*/ ) extends Extended {
+
+  }
+
+  implicit object BencodingProtocol extends DefaultBencodingProtocol {
+
+    implicit val handshakeFormat = bencodingFormat(Handshake, "m", "p", "v", "yourip", "ipv4", "ipv6", "reqq")
 
   }
 
@@ -43,34 +47,11 @@ object bep_10 {
   class HandshakeMessageDecoder extends MessageDecoder {
     override def supportMessageId(id: Byte): Boolean = id == 0
 
-    override def parse(id: Byte, payload: ByteBuffer): Try[Extended] = {
-      var enabledExtensions = Map[String, Int]()
-      var disabledExtensions = Set[String]()
+    override def parse(id: Byte, payload: ByteBuffer): Extended = {
+      import sbencoding._
+      import BencodingProtocol._
 
-      BencodeDecoder.decode(new String(payload.array(),
-        payload.arrayOffset(), payload.remaining())).map {
-        case map: Map[_, _] =>
-          map.asInstanceOf[Map[String, Any]]("v") match {
-            case extensionMapping: Map[_, _] =>
-              extensionMapping.toList
-                .foreach {
-                case (ext: String, 0) =>
-                  disabledExtensions = disabledExtensions + ext
-                case (ext: String, id: Number) =>
-                  enabledExtensions = enabledExtensions + (ext -> id.intValue())
-              }
-          }
-
-          val port = map.asInstanceOf[Map[String, Any]].get("p").asInstanceOf[Option[Long]].map(_.toInt)
-          val clientName = map.asInstanceOf[Map[String, Any]].get("v").asInstanceOf[Option[String]]
-          val ip = map.asInstanceOf[Map[String, Any]].get("yourip").asInstanceOf[Option[String]]
-          val ipv6 = map.asInstanceOf[Map[String, Any]].get("ipv6").asInstanceOf[Option[String]].map(_.getBytes("ISO-8859-1"))
-          val ipv4 = map.asInstanceOf[Map[String, Any]].get("ipv4").asInstanceOf[Option[String]].map(_.getBytes("ISO-8859-1"))
-
-          Handshake(enabledExtensions, disabledExtensions,
-            port, clientName, ip, ipv6, ipv4)
-      }
-
+      payload.parseBencoding.convertTo[Handshake]
     }
   }
 
@@ -94,7 +75,6 @@ class bep_10 extends HandshakeEnabled with AdditionalMessageDecoding {
         .find(_.supportMessageId(extendedMsgId))
         .map(decoder => decoder.parse(extendedMsgId, payload.slice()))
         .getOrElse(throw new RuntimeException("Unable to parse extended message: " + extendedMsgId)))
-
 
   }
 }

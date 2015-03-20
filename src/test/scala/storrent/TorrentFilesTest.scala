@@ -1,6 +1,6 @@
 package storrent
 
-import org.scalatest.{FunSuite, Matchers}
+import org.scalatest.{ FunSuite, Matchers }
 
 import scala.io.Source
 

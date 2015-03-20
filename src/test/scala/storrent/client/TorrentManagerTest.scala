@@ -1,12 +1,12 @@
 package storrent.client
 
-import java.nio.file.{Paths, Files}
+import java.nio.file.{ Paths, Files }
 
 import akka.actor._
-import akka.testkit.{TestActorRef, ImplicitSender, TestKit}
+import akka.testkit.{ TestActorRef, ImplicitSender, TestKit }
 import org.scalatest._
 import storrent.Torrent
-import storrent.client.TorrentManager.{TorrentStarted, StartTorrent}
+import storrent.client.TorrentManager.{ TorrentStarted, StartTorrent }
 
 import scala.concurrent.duration.DurationInt
 
@@ -16,7 +16,7 @@ import scala.concurrent.duration.DurationInt
  * Time: 14:50
  */
 class TorrentManagerTest(_system: ActorSystem) extends TestKit(_system)
-  with ImplicitSender with WordSpecLike with Matchers with BeforeAndAfterAll {
+    with ImplicitSender with WordSpecLike with Matchers with BeforeAndAfterAll {
 
   def this() = this(ActorSystem("TorrentManagerTest"))
 
@@ -36,7 +36,7 @@ class TorrentManagerTest(_system: ActorSystem) extends TestKit(_system)
       mgr.underlyingActor.torrentActors.size shouldBe 0
 
       val metainfoString = loadFile("src/test/resources/torrents/9FE44783704319D9DBAE418F745A1FB106E45B1F.torrent")
-      val infoHash = Torrent(metainfoString).get.info.hash
+      val infoHash = Torrent(metainfoString).get.infoHash
       mgr ! StartTorrent(metainfoString)
 
       expectMsgPF(1.seconds) {
@@ -62,7 +62,7 @@ class TorrentManagerTest(_system: ActorSystem) extends TestKit(_system)
       mgr.underlyingActor.torrentActors.size shouldBe 0
 
       val metainfoString = loadFile("src/test/resources/torrents/9FE44783704319D9DBAE418F745A1FB106E45B1F.torrent")
-      val infoHash = Torrent(metainfoString).get.info.hash
+      val infoHash = Torrent(metainfoString).get.infoHash
       mgr ! StartTorrent(metainfoString)
 
       var client: ActorRef = null
