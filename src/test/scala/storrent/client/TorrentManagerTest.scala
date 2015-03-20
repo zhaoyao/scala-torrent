@@ -24,11 +24,9 @@ class TorrentManagerTest(_system: ActorSystem) extends TestKit(_system)
     TestKit.shutdownActorSystem(system)
   }
 
-  def loadFile(path: String): String = {
-    new String(Files.readAllBytes(Paths.get(path)), "ISO-8859-1")
-  }
+  def loadFile(path: String) = Files.readAllBytes(Paths.get(path))
 
-  "A TorrentManager actor" must {
+  "A TorrentManager actor" should {
 
     "create TorrentClient when info hash not seen" in {
       val mgr = TestActorRef[TorrentManager](Props(new TorrentManager(null)))

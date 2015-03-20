@@ -12,7 +12,7 @@ object TorrentManager {
                           trackers: List[String],
                           info: Map[String, Any])
 
-  case class StartTorrent(metainfoData: String)
+  case class StartTorrent(metainfoData: Array[Byte])
 
   case class TorrentStarted(client: ActorRef)
 
