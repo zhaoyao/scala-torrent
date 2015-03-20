@@ -1,6 +1,6 @@
 package storrent.client
 
-import akka.actor.{ Props, Actor, ActorLogging, ActorRef }
+import akka.actor.{ Actor, ActorLogging, ActorRef, Props }
 import akka.pattern._
 import storrent.Torrent
 

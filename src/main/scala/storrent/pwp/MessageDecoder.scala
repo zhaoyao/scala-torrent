@@ -3,7 +3,7 @@ package storrent.pwp
 import java.nio.ByteBuffer
 
 import akka.util.ByteString
-import storrent.extension.{ AdditionalMessageDecoding, HandshakeEnabled }
+import storrent.extension.AdditionalMessageDecoding
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{ Success, Try }

@@ -1,15 +1,10 @@
 package storrent.client
 
-import java.io.File
-import java.io.{ FileInputStream, File, FileNotFoundException }
-import java.nio.ByteBuffer
-import java.nio.file.Path
-import java.security.{ DigestInputStream, MessageDigest }
+import java.io.{ File, FileInputStream }
+import java.security.MessageDigest
 
-import akka.util.ByteString
 import storrent.Torrent
 
-import scala.collection.JavaConverters._
 import scala.concurrent.Future
 
 object TorrentMaker {

@@ -2,7 +2,7 @@ package storrent.client
 
 import akka.actor._
 import storrent.Torrent
-import storrent.client.TorrentManager.{ TorrentStarted, StartSeeding, StartTorrent, TorrentIgnored }
+import storrent.client.TorrentManager.{ StartSeeding, StartTorrent, TorrentIgnored, TorrentStarted }
 
 import scala.util.{ Failure, Success }
 

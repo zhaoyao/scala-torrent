@@ -3,7 +3,6 @@ package storrent.client
 import akka.actor.ActorSystem
 import spray.client.pipelining._
 import spray.http.{ HttpRequest, HttpResponse, Uri }
-import storrent.Peer
 
 import scala.concurrent.Future
 

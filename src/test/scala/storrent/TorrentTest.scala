@@ -4,16 +4,12 @@ import java.nio.file.{ Files, Paths }
 
 import org.scalatest.{ FunSuite, Matchers }
 
-import scala.io.Codec
-
 /**
  * User: zhaoyao
  * Date: 3/13/15
  * Time: 11:13
  */
 class TorrentTest extends FunSuite with Matchers {
-
-  import sbencoding._
 
   def readFile(path: String) = Files.readAllBytes(Paths.get(path))
 

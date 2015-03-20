@@ -6,7 +6,7 @@ import sbencoding.DefaultBencodingProtocol
 import storrent.pwp.Message
 
 import scala.collection.mutable
-import scala.util.{ Try, Failure, Success }
+import scala.util.Try
 
 object bep_10 {
 
@@ -49,7 +49,7 @@ object bep_10 {
 
     override def parse(id: Byte, payload: ByteBuffer): Extended = {
       import sbencoding._
-      import BencodingProtocol._
+      import storrent.extension.bep_10.BencodingProtocol._
 
       payload.parseBencoding.convertTo[Handshake]
     }

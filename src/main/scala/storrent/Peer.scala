@@ -3,7 +3,7 @@ package storrent
 import java.net.InetAddress
 import java.nio.ByteBuffer
 
-import sbencoding.{ BcString, BcValue, RootBencodingFormat, DefaultBencodingProtocol }
+import sbencoding.DefaultBencodingProtocol
 
 object Peer {
 

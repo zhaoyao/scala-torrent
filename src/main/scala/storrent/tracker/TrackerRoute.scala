@@ -6,8 +6,8 @@ import akka.util.Timeout
 import spray.http.MediaType
 import spray.routing.Directives
 import storrent.client.TrackerResponse
-import storrent.{ Util, Peer }
-import TorrentStateActor.PeerUpdate
+import storrent.tracker.TorrentStateActor.PeerUpdate
+import storrent.{ Peer, Util }
 
 import scala.concurrent.duration.DurationInt
 import scala.util.{ Failure, Success }
@@ -25,9 +25,8 @@ trait TrackerRoute {
   val system: ActorSystem
   val torrentManger: ActorSelection
 
-  import system.dispatcher
   import sbencoding._
-  import TrackerResponse.BencodingProtocol
+  import system.dispatcher
 
   implicit val timeout = Timeout(5.seconds)
 

@@ -3,7 +3,7 @@ package storrent.store
 import akka.actor.{ Actor, ActorRef, ActorSystem, Props }
 import akka.pattern._
 import storrent.Torrent
-import storrent.store.TorrentStoreActorMessages.{ StoreTorrent, GetTorrent }
+import storrent.store.TorrentStoreActorMessages.{ GetTorrent, StoreTorrent }
 
 import scala.concurrent.Future
 

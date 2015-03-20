@@ -2,7 +2,7 @@ package storrent
 
 import java.net.InetAddress
 
-import org.scalatest.{ Matchers, WordSpec, FunSuite }
+import org.scalatest.{ Matchers, WordSpec }
 
 /**
  * User: zhaoyao

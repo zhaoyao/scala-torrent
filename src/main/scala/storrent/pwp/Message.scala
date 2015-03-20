@@ -2,8 +2,6 @@ package storrent.pwp
 
 import java.nio.ByteBuffer
 
-import akka.util.ByteString
-
 /**
  * User: zhaoyao
  * Date: 3/13/15

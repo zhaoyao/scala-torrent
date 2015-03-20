@@ -1,12 +1,12 @@
 package storrent.client
 
-import java.nio.file.{ Paths, Files }
+import java.nio.file.{ Files, Paths }
 
 import akka.actor._
-import akka.testkit.{ TestActorRef, ImplicitSender, TestKit }
+import akka.testkit.{ ImplicitSender, TestActorRef, TestKit }
 import org.scalatest._
 import storrent.Torrent
-import storrent.client.TorrentManager.{ TorrentStarted, StartTorrent }
+import storrent.client.TorrentManager.{ StartTorrent, TorrentStarted }
 
 import scala.concurrent.duration.DurationInt
 
