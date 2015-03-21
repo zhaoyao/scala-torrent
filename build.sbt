@@ -6,7 +6,7 @@ version := "1.0"
 
 scalaVersion := "2.11.4"
 
-resolvers += Resolver.sonatypeRepo("snapshot")
+resolvers += Resolver.sonatypeRepo("snapshots")
 
 libraryDependencies := Seq(
   //  "com.wacai" %% "config-annotation" % "0.1-SNAPSHOT",
