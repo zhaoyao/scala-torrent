@@ -18,7 +18,7 @@ import scala.util.{ Failure, Success, Try }
 object PeerConnection {
 
   def props(infoHash: String, selfPeerId: String, target: Peer) =
-    Props(classOf[PeerConnection], infoHash, selfPeerId, target)
+    Props(classOf[PeerConnection], infoHash, selfPeerId, target, Set.empty)
 
 }
 
@@ -40,6 +40,7 @@ class PeerConnection(infoHash: String,
   val interested = new AtomicBoolean(false)
 
   override def preStart(): Unit = {
+    log.info("Creating peer connection for ih: {} to {}", infoHash, targetPeer)
     IO(Tcp)(context.system) ! Connect(new InetSocketAddress(targetPeer.ip, targetPeer.port))
   }
 
@@ -47,6 +48,7 @@ class PeerConnection(infoHash: String,
 
   def connecting: Receive = {
     case c @ Connected(remote, local) =>
+      log.info("Connection to peer {} established", targetPeer)
       val conn = sender()
       conn ! Register(self)
 
@@ -56,7 +58,7 @@ class PeerConnection(infoHash: String,
     case Received(data) =>
       Try(Handshake.parse(data)) match {
         case Success((hs: Handshake, remaining: ByteString)) =>
-          if (hs.peerId != targetPeer.id || hs.protocol != handshake.protocol) {
+          if ((hs.peerId != targetPeer.id && targetPeer.id != "") || hs.protocol != handshake.protocol) {
             log.info("Invalid handshake: {}. peer={} ih={}", hs, targetPeer, infoHash)
             context stop self
 
@@ -77,10 +79,11 @@ class PeerConnection(infoHash: String,
 
     case CommandFailed(_: Connect) =>
       //TODO retry
+      log.info("Peer[connecting] Unable to connect to peer {}", targetPeer)
       context stop self
 
     case PeerClosed =>
-      log.info("Peer connection closed")
+      log.info("Peer[connecting] connection closed")
       context stop self
 
     case _ => stash
@@ -102,7 +105,7 @@ class PeerConnection(infoHash: String,
       context stop self
 
     case PeerClosed =>
-      log.info("Peer connection closed")
+      log.info("Peer[connected] connection closed")
       context stop self
   }
 

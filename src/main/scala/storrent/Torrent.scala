@@ -85,7 +85,7 @@ case class Metainfo(announce: String,
 
 case class Torrent private (metainfo: Metainfo, raw: BcDict) {
 
-  val infoHashRaw = Util.sha1(raw.getFields("info").head.asBcDict().toString())
+  val infoHashRaw = Util.sha1(raw.getFields("info").head.asBcDict().toByteArray())
   val infoHash = Util.encodeHex(infoHashRaw)
 
 }

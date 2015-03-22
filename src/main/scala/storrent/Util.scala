@@ -9,13 +9,29 @@ import java.security.MessageDigest
  */
 object Util {
 
+  def urlEncodeInfoHash(hexInfoHash: String) = hexInfoHash.sliding(2, 2).map(s => BigInt(s, 16) match {
+    case b if (65 <= b && b <= 90) || (97 <= b && b <= 122) || (48 <= b && b <= 57) || b == 45 || b == 95 || b == 46 || b == 126 =>
+      b.charValue.toString
+    case b => "%" + s.toUpperCase()
+  }).mkString
+
   def sha1Hex(value: String) = {
+    encodeHex(sha1(value))
+  }
+
+  def sha1Hex(value: Array[Byte]) = {
     encodeHex(sha1(value))
   }
 
   def sha1(value: String) = {
     val digest = MessageDigest.getInstance("sha1")
     digest.update(value.getBytes())
+    digest.digest()
+  }
+
+  def sha1(value: Array[Byte]) = {
+    val digest = MessageDigest.getInstance("sha1")
+    digest.update(value)
     digest.digest()
   }
 

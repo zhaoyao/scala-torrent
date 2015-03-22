@@ -41,6 +41,7 @@ sealed trait MultitrackerStrategy {
     }
   }
 
+
   def httpAnnounce(tracker: Uri,
                    infoHash: String,
                    peerId: String,
@@ -52,7 +53,6 @@ sealed trait MultitrackerStrategy {
     val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
 
     val uri = tracker.withQuery(
-      ("info_hash", infoHash),
       ("peer_id", peerId),
       ("port", port.toString),
       ("uploaded", uploaded.toString),
@@ -62,7 +62,8 @@ sealed trait MultitrackerStrategy {
       ("compact", "1")
     )
 
-    pipeline(Get(uri)).map(handleTrackerResponse)
+    val announceUri = Uri(uri + "&info_hash=" + infoHash, Uri.ParsingMode.RelaxedWithRawQuery)
+    pipeline(Get(announceUri)).map(handleTrackerResponse)
   }
 
   def handleTrackerResponse(response: HttpResponse): TrackerResponse = {

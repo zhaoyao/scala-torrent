@@ -1,19 +1,24 @@
 package storrent.pwp
 
+import java.nio.file.{Files, Paths}
+
 import akka.actor._
 import akka.pattern._
 import akka.util.Timeout
 import storrent.client.Announcer.Announce
-import storrent.client.{ Announcer, TrackerResponse }
-import storrent.{ Peer, PeerId, Torrent }
+import storrent.client.{Announcer, TrackerResponse}
+import storrent.{Peer, PeerId, Torrent}
 
 import scala.collection.mutable
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
+import scala.util.{Failure, Success}
 
 object PwpPeer {
 
   private object DoAnnounce
+
+  def props(torrent: Torrent, port: Int) = Props(classOf[PwpPeer], torrent, port)
 
 }
 
@@ -23,10 +28,10 @@ class PwpPeer(torrent: Torrent,
   import context.dispatcher
   import storrent.pwp.PwpPeer._
 
-  val peerConns = new mutable.HashMap[String, ActorRef]()
+  val peerConns = new mutable.HashMap[Peer, ActorRef]()
   val id = PeerId()
 
-  implicit val announceTimeout = Timeout(5.minutes)
+  val announceTimeout = Timeout(5.minutes)
   val announcer = context.actorOf(Announcer.props(id, port, torrent, self))
 
   //TODO @stats(downloaded, uploaded) 如果这个采集器放在这里，那么就不够抽象了
@@ -39,12 +44,13 @@ class PwpPeer(torrent: Torrent,
         context.system.scheduler.scheduleOnce(interval.seconds, self, DoAnnounce)
 
       case TrackerResponse.Error(msg) =>
+
       //TODO handle announce error
     }
 
     resp.flatMap {
       case TrackerResponse.Success(_, peers, _, _) => Future.successful(peers)
-      case TrackerResponse.Error(msg)              => Future.failed(new RuntimeException("announce failed: " + msg))
+      case TrackerResponse.Error(msg) => Future.failed(new RuntimeException("announce failed: " + msg))
     }
   }
 
@@ -56,10 +62,14 @@ class PwpPeer(torrent: Torrent,
   override def receive: Receive = {
     case DoAnnounce =>
       //TODO 从stats中获取当前的下载进度
-      announce(0, 0, 0, "") onSuccess {
-        case peers => peers.foreach { p =>
-          peerConns.getOrElseUpdate(p.id, createPeer(p))
-        }
+      announce(0, 0, torrent.metainfo.info.length.get.toInt, "") onComplete {
+        case Success(peers) =>
+          log.info("Got peers: {}", peers)
+          peers.foreach { p =>
+            peerConns.getOrElseUpdate(p, createPeer(p))
+          }
+        case Failure(e) =>
+          log.error(e, "Announce failure")
       }
 
     case (p: Peer, msg: Message) =>
@@ -72,7 +82,7 @@ class PwpPeer(torrent: Torrent,
   }
 
   def createPeer(p: Peer): ActorRef = {
-    val c = context.actorOf(PeerConnection.props(torrent.infoHash, id, p), s"${torrent.infoHash}/${p.id}-conn")
+    val c = context.actorOf(PeerConnection.props(torrent.infoHash, id, p))
     context.watch(c)
     c
   }

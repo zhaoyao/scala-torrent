@@ -2,7 +2,7 @@ package storrent.client
 
 import akka.actor.{ Actor, ActorLogging, ActorRef, Props }
 import akka.pattern._
-import storrent.Torrent
+import storrent.{Util, Torrent}
 
 import scala.concurrent.Future
 
@@ -39,7 +39,7 @@ class Announcer(peerId: String,
     case Announce(uploaded, downloaded, left, event) =>
       val response: Future[TrackerResponse] =
         multitrackerStrategy.announce(
-          new String(torrent.infoHashRaw, "ISO-8859-1"),
+          Util.urlEncodeInfoHash(torrent.infoHash),
           peerId, port,
           uploaded, downloaded, left, event
         )
