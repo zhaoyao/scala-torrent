@@ -1,7 +1,7 @@
 package storrent
 
 import java.net.InetAddress
-import java.nio.{ByteOrder, ByteBuffer}
+import java.nio.{ ByteOrder, ByteBuffer }
 
 import sbencoding.DefaultBencodingProtocol
 
@@ -24,7 +24,7 @@ object Peer {
 
     import sbencoding._
 
-    def peerFormat = new RootBencodingFormat[Peer] {
+    def peerFormat = new BencodingFormat[Peer] {
       override def write(obj: Peer): BcValue =
         BcDict("id" -> BcString(obj.id, "UTF-8"),
           "ip" -> BcString(obj.ip, "UTF-8"),

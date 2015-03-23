@@ -10,7 +10,7 @@ object Torrent {
 
   implicit object TorrentBencodingProtocol extends DefaultBencodingProtocol {
 
-    implicit val torrentFileFormat: BencodingFormat[TorrentFile] = new RootBencodingFormat[TorrentFile] {
+    implicit val torrentFileFormat: BencodingFormat[TorrentFile] = new BencodingFormat[TorrentFile] {
 
       override def write(obj: TorrentFile): BcValue = BcDict(
         "path" -> BcList(obj.path.split("/").map(s => BcString(s.getBytes("UTF-8"))).toVector),

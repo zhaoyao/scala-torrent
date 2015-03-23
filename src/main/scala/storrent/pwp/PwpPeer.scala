@@ -1,18 +1,18 @@
 package storrent.pwp
 
-import java.nio.file.{Files, Paths}
+import java.nio.file.{ Files, Paths }
 
 import akka.actor._
 import akka.pattern._
 import akka.util.Timeout
 import storrent.client.Announcer.Announce
-import storrent.client.{Announcer, TrackerResponse}
-import storrent.{Peer, PeerId, Torrent}
+import storrent.client.{ Announcer, TrackerResponse }
+import storrent.{ Peer, PeerId, Torrent }
 
 import scala.collection.mutable
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.util.{Failure, Success}
+import scala.util.{ Failure, Success }
 
 object PwpPeer {
 
@@ -50,7 +50,7 @@ class PwpPeer(torrent: Torrent,
 
     resp.flatMap {
       case TrackerResponse.Success(_, peers, _, _) => Future.successful(peers)
-      case TrackerResponse.Error(msg) => Future.failed(new RuntimeException("announce failed: " + msg))
+      case TrackerResponse.Error(msg)              => Future.failed(new RuntimeException("announce failed: " + msg))
     }
   }
 

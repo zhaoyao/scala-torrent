@@ -2,7 +2,7 @@ package storrent.client
 
 import akka.actor.{ Actor, ActorLogging, ActorRef, Props }
 import akka.pattern._
-import storrent.{Util, Torrent}
+import storrent.{ Util, Torrent }
 
 import scala.concurrent.Future
 

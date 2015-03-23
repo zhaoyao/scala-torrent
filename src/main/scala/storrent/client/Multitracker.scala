@@ -41,7 +41,6 @@ sealed trait MultitrackerStrategy {
     }
   }
 
-
   def httpAnnounce(tracker: Uri,
                    infoHash: String,
                    peerId: String,
