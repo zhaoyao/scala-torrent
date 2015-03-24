@@ -63,9 +63,9 @@ object Torrent {
 
 case class Info(_name: String,
                 length: Option[Long],
-                md5sum: Option[String],
+                md5sum: Option[Array[Byte]],
                 pieceLength: Long,
-                pieces: String,
+                pieces: Array[Byte],
                 _private: Option[Boolean],
                 files: Option[List[TorrentFile]],
                 nameUTF8: Option[String]) {
@@ -75,7 +75,7 @@ case class Info(_name: String,
   def isPrivate = _private.getOrElse(false)
 }
 
-case class Metainfo(announce: String,
+case class Metainfo(announce: Option[String],
                     announceList: Option[List[List[String]]] = Some(Nil),
                     comment: Option[String],
                     publisher: Option[String],

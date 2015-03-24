@@ -25,13 +25,13 @@ class Announcer(peerId: String,
   import storrent.client.Announcer._
 
   val multitrackerStrategy = (torrent.metainfo.announce, torrent.metainfo.announceList) match {
-    case (t, None | Some(Nil)) =>
+    case (Some(t), None | Some(Nil)) =>
       new SingleTracker(context.system, t)
-    case (t, Some(trackers)) if trackers.forall(_.size == 1) =>
+    case (_, Some(trackers)) if trackers.forall(_.size == 1) =>
       new TryAll(context.system, trackers.map(_(0)))
-    case (t, Some(trackers :: Nil)) =>
+    case (_, Some(trackers :: Nil)) =>
       new UseBest(context.system, trackers)
-    case (t, Some(trackers)) if trackers.size > 1 && trackers.forall(_.size >= 1) =>
+    case (_, Some(trackers)) if trackers.size > 1 && trackers.forall(_.size >= 1) =>
       new PreferFirstTier(context.system, trackers.head, trackers.tail)
   }
 

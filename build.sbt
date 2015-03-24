@@ -8,6 +8,8 @@ scalaVersion := "2.11.4"
 
 resolvers += Resolver.sonatypeRepo("snapshots")
 
+resolvers += Resolver.defaultLocal
+
 libraryDependencies := Seq(
   //  "com.wacai" %% "config-annotation" % "0.1-SNAPSHOT",
   "com.github.zhaoyao" %% "sbencoding" % "0.1.0-SNAPSHOT",

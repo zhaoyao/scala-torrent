@@ -163,7 +163,93 @@ object TorrentFiles {
   }
 
   def fromMetainfo(torrent: Torrent): TorrentFiles = {
-    null
+    val infoDict = torrent.metainfo.info
+    val files: List[TorrentFile] = infoDict.files.orElse {
+      infoDict.length.map { l =>
+        List(TorrentFile(infoDict.name, l, infoDict.md5sum))
+      }
+    }.getOrElse(throw new RuntimeException("Invalid torrent"))
+
+    val pieceLength = infoDict.pieceLength.toInt
+    val totalLength = files.map(_.length).sum
+
+    var fileOffset: Long = 0
+    var fileIndex = -1
+
+    def nextFile() = {
+      fileIndex += 1
+      fileOffset = 0
+
+      if (fileIndex < files.length)
+        files(fileIndex)
+      else
+        null
+    }
+
+    var f: TorrentFile = nextFile()
+
+    println(files)
+
+    val pieces = infoDict.pieces.sliding(20, 20).zipWithIndex.map { p =>
+      val (pieceHash, i) = p
+
+      var locations = List[FileLoc]()
+
+//      println(s"Piece index=$i")
+
+      if (fileOffset + pieceLength <= f.length) {
+        //当前文件可以满足一个piece大小
+
+        locations = List(FileLoc(fileIndex, fileOffset, pieceLength))
+        fileOffset += pieceLength
+
+//        println(s"0 fileOffset=$fileOffset fileIndex=$fileIndex")
+
+        if (fileOffset + pieceLength == f.length) {
+//          fileOffset = 0
+//          fileIndex += 1
+          f = nextFile()
+        }
+
+      } else {
+        var pieceRemaining: Long = Math.min(pieceLength, totalLength - i*pieceLength)
+
+        while (pieceRemaining > 0) {
+
+          if (pieceRemaining > f.length - fileOffset) {
+            //当前文件无法满足一个piece大小
+
+            locations ::= FileLoc(fileIndex, fileOffset, f.length - fileOffset)
+            pieceRemaining -= (f.length - fileOffset)
+
+//            fileOffset = 0
+//            fileIndex += 1
+//            f = files(fileIndex)
+//            println(s"2 pieceRemaining=$pieceRemaining fileOffset=$fileOffset fileIndex=$fileIndex")
+            f = nextFile()
+
+          } else {
+            //当前文件可以满足一个piece大小
+            locations ::= FileLoc(fileIndex, fileOffset, pieceRemaining)
+            fileOffset += pieceRemaining
+            pieceRemaining = 0
+
+//            println(s"3 pieceRemaining=$pieceRemaining fileOffset=$fileOffset fileIndex=$fileIndex")
+
+            if (fileOffset == f.length) {
+//              fileIndex += 1
+//              fileOffset = 0
+              f = nextFile()     //8000597
+            }
+
+          }
+        }
+      }
+
+      Piece(i, pieceHash, locations.reverse)
+    }.toList
+
+    TorrentFiles(files, pieces, totalLength)
   }
 }
 
