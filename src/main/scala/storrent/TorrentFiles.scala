@@ -6,6 +6,8 @@ import java.security.MessageDigest
 
 import storrent.TorrentFiles.{ Piece, TorrentFile }
 
+import scala.annotation.tailrec
+
 object TorrentFiles {
 
   case class Piece(idx: Int, hash: Array[Byte], locs: List[FileLoc])
@@ -172,83 +174,53 @@ object TorrentFiles {
 
     val pieceLength = infoDict.pieceLength.toInt
     val totalLength = files.map(_.length).sum
+    val lastPieceLength = if (totalLength % pieceLength == 0) pieceLength else totalLength % pieceLength
+    val totalPieces = totalLength / pieceLength
 
-    var fileOffset: Long = 0
-    var fileIndex = -1
+    @tailrec
+    def buildLocations(f: TorrentFile,
+                       index: Int,
+                       offset: Long,
+                       files: List[TorrentFile],
+                       pieceRemaining: Long,
+                       locations: List[FileLoc]): (TorrentFile, List[TorrentFile], Int, Long, List[FileLoc]) =
+      pieceRemaining match {
+      case 0 => (f, files, index, offset, locations.reverse)
+      case x =>
+        if (offset == f.length) {
+          buildLocations(files.head, index + 1, 0, files.tail, x, locations)
 
-    def nextFile() = {
-      fileIndex += 1
-      fileOffset = 0
+        } else if (x > f.length - offset) {
+          val fileRemaining = f.length - offset
+          buildLocations(files.head, index + 1, 0, files.tail, x - fileRemaining,
+            FileLoc(index, offset, fileRemaining) :: locations)
 
-      if (fileIndex < files.length)
-        files(fileIndex)
-      else
-        null
+        } else {
+          buildLocations(f, index, offset + x, files, 0,
+            FileLoc(index, offset, x) :: locations)
+        }
     }
 
-    var f: TorrentFile = nextFile()
+    @tailrec
+    def buildPieces(f: TorrentFile,
+                    index: Int,
+                    offset: Long,
+                    files: List[TorrentFile],
+                    pieceIndex: Int,
+                    pieces: List[Array[Byte]],
+                    result: List[Piece]): List[Piece] = {
+      pieces match {
+        case Nil => result.reverse
 
-    println(files)
-
-    val pieces = infoDict.pieces.sliding(20, 20).zipWithIndex.map { p =>
-      val (pieceHash, i) = p
-
-      var locations = List[FileLoc]()
-
-//      println(s"Piece index=$i")
-
-      if (fileOffset + pieceLength <= f.length) {
-        //当前文件可以满足一个piece大小
-
-        locations = List(FileLoc(fileIndex, fileOffset, pieceLength))
-        fileOffset += pieceLength
-
-//        println(s"0 fileOffset=$fileOffset fileIndex=$fileIndex")
-
-        if (fileOffset + pieceLength == f.length) {
-//          fileOffset = 0
-//          fileIndex += 1
-          f = nextFile()
-        }
-
-      } else {
-        var pieceRemaining: Long = Math.min(pieceLength, totalLength - i*pieceLength)
-
-        while (pieceRemaining > 0) {
-
-          if (pieceRemaining > f.length - fileOffset) {
-            //当前文件无法满足一个piece大小
-
-            locations ::= FileLoc(fileIndex, fileOffset, f.length - fileOffset)
-            pieceRemaining -= (f.length - fileOffset)
-
-//            fileOffset = 0
-//            fileIndex += 1
-//            f = files(fileIndex)
-//            println(s"2 pieceRemaining=$pieceRemaining fileOffset=$fileOffset fileIndex=$fileIndex")
-            f = nextFile()
-
-          } else {
-            //当前文件可以满足一个piece大小
-            locations ::= FileLoc(fileIndex, fileOffset, pieceRemaining)
-            fileOffset += pieceRemaining
-            pieceRemaining = 0
-
-//            println(s"3 pieceRemaining=$pieceRemaining fileOffset=$fileOffset fileIndex=$fileIndex")
-
-            if (fileOffset == f.length) {
-//              fileIndex += 1
-//              fileOffset = 0
-              f = nextFile()     //8000597
-            }
-
-          }
-        }
+        case hash :: tail =>
+          val pl: Long = if (pieceIndex + 1 == totalPieces) lastPieceLength else pieceLength
+          val (file, fs, fileIndex, fileOffset, locs) = buildLocations(f, index, offset, files, pl, Nil)
+          buildPieces(file, fileIndex, fileOffset, fs, pieceIndex + 1, tail,
+            Piece(pieceIndex, hash, locs) :: result)
       }
+    }
 
-      Piece(i, pieceHash, locations.reverse)
-    }.toList
-
+    val pieces = buildPieces(files.head, 0, 0, files.tail, 0, infoDict.pieces.sliding(20, 20).toList, Nil)
     TorrentFiles(files, pieces, totalLength)
   }
 }

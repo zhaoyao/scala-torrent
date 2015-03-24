@@ -4,6 +4,7 @@ import java.nio.file.{ Paths, Files }
 
 import org.scalatest.{ WordSpecLike, WordSpec, FunSuite, Matchers }
 import sbencoding.pimpBytes
+import storrent.TorrentFiles.{TorrentFile, FileLoc, Piece}
 
 import scala.io.Source
 
@@ -52,9 +53,7 @@ class TorrentFilesSpec extends WordSpecLike with Matchers {
   "From metafile" should {
 
     def validatePieces(torrentFile: String) = {
-      val bc = Files.readAllBytes(Paths.get("src/test/resources/piecesTest/", torrentFile)).parseBencoding
-
-      val torrent = Torrent(Files.readAllBytes(Paths.get("src/test/resources/piecesTest/", torrentFile))).get
+      val torrent = Torrent(Files.readAllBytes(Paths.get("src/test/resources/torrents/", torrentFile))).get
 
       val torrentFiles = TorrentFiles.fromMetainfo(torrent)
 
@@ -65,10 +64,42 @@ class TorrentFilesSpec extends WordSpecLike with Matchers {
       }.get
 
       torrentFiles.pieces.flatMap(_.locs.map(_.length)).sum shouldEqual torrentFiles.totalLength
+
+      val pieceLength: Long = torrent.metainfo.info.pieceLength
+
+      var lastLoc: (FileLoc, Int) = null
+
+      torrentFiles.pieces.foreach { piece =>
+        piece.locs.foreach { loc =>
+          val f = torrentFiles.files(loc.fileIndex)
+
+          if (lastLoc != null) {
+            val lastF = torrentFiles.files(lastLoc._1.fileIndex)
+
+            if (loc.fileIndex == lastLoc._1.fileIndex) {
+              lastLoc._1.offset + lastLoc._1.length shouldEqual loc.offset
+            } else {
+              loc.offset shouldEqual 0
+              lastLoc._1.offset + lastLoc._1.length shouldEqual lastF.length
+            }
+          } else {
+            loc.offset shouldEqual 0
+          }
+
+          lastLoc = (loc, piece.idx)
+        }
+      }
     }
 
     "match original files" in {
-      val targetTorrents = List("287B2203D248270F79B34B0F819C47FF0B9D9D28.torrent")
+      val targetTorrents = List(
+        "9FE44783704319D9DBAE418F745A1FB106E45B1F.torrent",
+        "41F6A92B74EA9744A834AF947860562391C63188.torrent",
+        "4732A62A3F529E78750417DB19CBDD9EC374BFD5.torrent",
+        "C637A172C655B27C27A03CE681DED7C622E56B6B.torrent",
+        "F65CC435888BDDC26C7FD6C8025C5A163FFA4C1D.torrent",
+        "ubuntu.torrent"
+        )
       targetTorrents.foreach(validatePieces)
     }
 
