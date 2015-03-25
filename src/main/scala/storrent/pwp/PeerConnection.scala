@@ -69,7 +69,7 @@ class PeerConnection(infoHash: String,
             handleInboundData(remaining)
             context become connected(sender())
             unstashAll()
-            context.system.scheduler.schedule(5.seconds, 5.seconds, self, Keepalive)
+            context.system.scheduler.schedule(5.seconds, 60.seconds, self, Keepalive)
           }
 
         case Failure(e) =>
@@ -110,7 +110,6 @@ class PeerConnection(infoHash: String,
   }
 
   def handleInboundData(data: ByteString): Unit = {
-    log.info("Got peer data:{}", data.length)
     decodeMessage(data).foreach {
       case Choke =>
         this.choked.set(true)
