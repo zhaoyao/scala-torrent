@@ -1,5 +1,6 @@
 package storrent
 
+import java.io.InputStream
 import java.security.MessageDigest
 
 /**
@@ -32,6 +33,17 @@ object Util {
   def sha1(value: Array[Byte]) = {
     val digest = MessageDigest.getInstance("sha1")
     digest.update(value)
+    digest.digest()
+  }
+
+  def sha1(in: InputStream) = {
+    val digest = MessageDigest.getInstance("sha1")
+    val buffer = new Array[Byte](2048)
+    var n = in.read(buffer)
+    while (n > 0) {
+      digest.update(buffer, 0, n)
+      n = in.read(buffer)
+    }
     digest.digest()
   }
 

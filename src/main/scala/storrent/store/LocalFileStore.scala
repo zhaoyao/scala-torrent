@@ -1,18 +1,36 @@
 package storrent.store
 
-import java.io.{EOFException, RandomAccessFile}
+import java.io._
 import java.nio.file.Paths
+
+import storrent.Util
+import storrent.store.FileStore.FileObject
+import storrent.store.LocalFileStore.LocalFileObject
 
 import scala.concurrent.Future
 
-/**
- * User: zhaoyao
- * Date: 3/25/15
- * Time: 17:30
- */
+object LocalFileStore {
+
+  case class LocalFileObject(dataDir: String, file: File) extends FileObject {
+    override def path: String = file.getAbsolutePath.substring(new File(dataDir).getAbsolutePath.length+1)
+
+    override def length: Long = file.length()
+  }
+
+}
+
 class LocalFileStore(dataDir: String) extends FileStore {
 
-  override def read(path: String, offset: Int, length: Int): Future[Array[Byte]] = Future {
+  override def checksum(fileObject: FileObject): Array[Byte] = {
+    val in = new FileInputStream(new File(dataDir, fileObject.path))
+    try {
+      Util.sha1(in)
+    } finally {
+      in.close()
+    }
+  }
+
+  override def read(path: String, offset: Int, length: Int): Array[Byte] = {
     val f = new RandomAccessFile(Paths.get(dataDir, path).toFile, "rw")
     val data = new Array[Byte](length.toInt)
      try {
@@ -27,7 +45,7 @@ class LocalFileStore(dataDir: String) extends FileStore {
     data
   }
 
-  override def write(path: String, offset: Int, data: Array[Byte]): Future[Boolean] = Future {
+  override def write(path: String, offset: Int, data: Array[Byte]): Unit = {
     val f = new RandomAccessFile(Paths.get(dataDir, path).toFile, "rw")
     try {
       f.seek(offset)
@@ -35,6 +53,13 @@ class LocalFileStore(dataDir: String) extends FileStore {
     } finally {
       f.close()
     }
-    true
   }
+
+  override def list(filter: (FileObject) => Boolean): Array[FileObject] = {
+    new File(dataDir).listFiles(new FileFilter {
+      override def accept(pathname: File): Boolean = filter(LocalFileObject(dataDir, pathname))
+    }).map(f => LocalFileObject(dataDir, f))
+  }
+
+
 }

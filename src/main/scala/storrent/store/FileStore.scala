@@ -1,16 +1,28 @@
 package storrent.store
 
+import java.io.{File, FileFilter}
+
+import storrent.store.FileStore.FileObject
+
 import scala.concurrent.Future
 
-/**
- * User: zhaoyao
- * Date: 3/25/15
- * Time: 17:27
- */
+object FileStore {
+
+  trait FileObject {
+    def path: String
+    def length: Long
+  }
+
+}
+
 trait FileStore {
 
-  def read(path: String, offset: Int, length: Int): Future[Array[Byte]]
+  def list(filter: FileObject => Boolean = true): List[FileObject]
 
-  def write(path: String, offset: Int, data: Array[Byte]): Future[Boolean]
+  def checksum(fileObject: FileObject): Array[Byte]
+
+  def read(path: String, offset: Int, length: Int): Array[Byte]
+
+  def write(path: String, offset: Int, data: Array[Byte]): Unit
 
 }

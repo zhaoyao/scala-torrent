@@ -95,6 +95,7 @@ object TorrentFiles {
     }
   }
 
+  @tailrec
   def genPieces(basePath: String,
                 files: List[TorrentFile],
                 pieceLength: Int,
