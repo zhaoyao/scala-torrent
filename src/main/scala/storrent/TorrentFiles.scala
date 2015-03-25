@@ -4,7 +4,7 @@ import java.io.{ File, FileInputStream, FileNotFoundException, RandomAccessFile 
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
-import storrent.TorrentFiles.{ Piece, TorrentFile }
+import storrent.TorrentFiles.{FileLoc, Piece, TorrentFile}
 
 import scala.annotation.tailrec
 
@@ -183,22 +183,22 @@ object TorrentFiles {
                        offset: Long,
                        files: List[TorrentFile],
                        pieceRemaining: Long,
-                       locations: List[FileLoc]): (TorrentFile, List[TorrentFile], Int, Long, List[FileLoc]) =
-      pieceRemaining match {
-      case 0 => (f, files, index, offset, locations.reverse)
-      case x =>
-        if (offset == f.length) {
+                       locations: List[FileLoc]): (TorrentFile, List[TorrentFile], Int, Long, List[FileLoc]) = {
+      (pieceRemaining, f.length - offset) match {
+        case (0, _) => (f, files, index, offset, locations.reverse)
+
+        case (x, fileRemaining) if fileRemaining == 0 =>
           buildLocations(files.head, index + 1, 0, files.tail, x, locations)
 
-        } else if (x > f.length - offset) {
-          val fileRemaining = f.length - offset
+        case (x, fileRemaining) if x > fileRemaining =>
           buildLocations(files.head, index + 1, 0, files.tail, x - fileRemaining,
             FileLoc(index, offset, fileRemaining) :: locations)
 
-        } else {
+        case (x, fileRemaining) =>
           buildLocations(f, index, offset + x, files, 0,
             FileLoc(index, offset, x) :: locations)
-        }
+
+      }
     }
 
     @tailrec
@@ -238,7 +238,18 @@ case class TorrentFiles(files: List[TorrentFile],
 
   }
 
-  private def locateFileByIndex(index: Int, offset: Int): Unit = {
+  def locateFiles(index: Int, offset: Int, length: Int): Unit = {
+    assert(index < pieces.size)
+
+    // (15312, 1024), (15312+1024, 1024), (15312+1024*2, 5)
+    @tailrec
+    def offsetPair(xs: List[FileLoc], ret: List[(FileLoc, Long)]): List[(FileLoc, Long)] = xs match {
+      case Nil => ret
+      case h :: tail => offsetPair(tail, (h, tail.map(_.length).sum) :: ret)
+    }
+
+    println(pieces(index).locs)
+    println(offsetPair(pieces(index).locs.reverse, Nil))
 
   }
 }
