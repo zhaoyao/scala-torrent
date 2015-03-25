@@ -4,9 +4,11 @@ import java.io.{ File, FileInputStream, FileNotFoundException, RandomAccessFile 
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
-import storrent.TorrentFiles.{FileLoc, Piece, TorrentFile}
+import storrent.TorrentFiles.{ FileLoc, Piece, TorrentFile }
 
 import scala.annotation.tailrec
+import scala.collection.immutable.NumericRange
+import scala.collection.immutable.NumericRange.Exclusive
 
 object TorrentFiles {
 
@@ -229,27 +231,35 @@ case class TorrentFiles(files: List[TorrentFile],
                         pieces: List[Piece],
                         totalLength: Long) {
 
-  def readPiece(index: Int, offset: Int, length: Int): Unit = {
-    val buf = ByteBuffer.allocate(length)
-
-  }
-
-  def writePiece(index: Int, offset: Int, data: Array[Int]) = {
-
-  }
-
-  def locateFiles(index: Int, offset: Int, length: Int): Unit = {
+  def locateFiles(index: Int, offset: Int, length: Int): List[FileLoc] = {
     assert(index < pieces.size)
 
     // (15312, 1024), (15312+1024, 1024), (15312+1024*2, 5)
     @tailrec
-    def offsetPair(xs: List[FileLoc], ret: List[(FileLoc, Long)]): List[(FileLoc, Long)] = xs match {
-      case Nil => ret
-      case h :: tail => offsetPair(tail, (h, tail.map(_.length).sum) :: ret)
+    def offsetPair(xs: List[FileLoc], ret: List[(FileLoc, (Long, Long))]): List[(FileLoc, (Long, Long))] = xs match {
+      case Nil       => ret
+      case h :: tail => offsetPair(tail, (h, (tail.map(_.length).sum, tail.map(_.length).sum + h.length)) :: ret)
     }
 
-    println(pieces(index).locs)
-    println(offsetPair(pieces(index).locs.reverse, Nil))
+    val fileWithOffset = offsetPair(pieces(index).locs.reverse, Nil)
+
+    def in(i: Long, r: (Long, Long)): Boolean = (r._1 <= i && i < r._2)
+
+    fileWithOffset.filter(p => {
+      (in(offset, p._2) || in(offset + length, p._2)) || (offset <= p._2._1 && p._2._2 < offset + length)
+    }) match {
+      case Nil => Nil
+
+      case f :: Nil =>
+        f._1.copy(offset = f._1.offset + (offset - f._2._1), length = length) :: Nil
+
+      case first :: tail =>
+        val last = tail.reverse.head
+        val f = first._1.copy(offset = first._1.offset + (offset - first._2._1))
+        val l = last._1.copy(length = (offset + length) - last._2._1)
+
+        f :: (l :: tail.reverse.tail.reverse.map(_._1)).reverse
+    }
 
   }
 }

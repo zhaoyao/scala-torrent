@@ -4,7 +4,7 @@ import java.nio.file.{ Paths, Files }
 
 import org.scalatest.{ WordSpecLike, WordSpec, FunSuite, Matchers }
 import sbencoding.pimpBytes
-import storrent.TorrentFiles.{TorrentFile, FileLoc, Piece}
+import storrent.TorrentFiles.{ TorrentFile, FileLoc, Piece }
 
 import scala.io.Source
 
@@ -99,8 +99,26 @@ class TorrentFilesSpec extends WordSpecLike with Matchers {
         "C637A172C655B27C27A03CE681DED7C622E56B6B.torrent",
         "F65CC435888BDDC26C7FD6C8025C5A163FFA4C1D.torrent",
         "ubuntu.torrent"
-        )
+      )
       targetTorrents.foreach(validatePieces)
+    }
+
+  }
+
+  "Locate files" should {
+
+    "return correct files by piece index and position" in {
+
+      val files = TorrentFiles(Nil, List(Piece(0, Array.empty[Byte], List(
+        FileLoc(0, 0, 6),
+        FileLoc(1, 0, 52),
+        FileLoc(2, 0, 10)
+      ))), 0)
+
+      files.locateFiles(0, 4, 15) shouldEqual List(FileLoc(0, 4, 6), FileLoc(1, 0, 13))
+      files.locateFiles(0, 6, 15) shouldEqual List(FileLoc(1, 0, 15))
+      files.locateFiles(0, 4, 60) shouldEqual List(FileLoc(0, 4, 6), FileLoc(1, 0, 52), FileLoc(2, 0, 6))
+
     }
 
   }
