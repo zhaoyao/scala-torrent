@@ -3,10 +3,10 @@ package storrent.client
 import java.nio.file.Paths
 import java.util
 
-import akka.actor.{Props, Actor, ActorLogging}
+import akka.actor.{Actor, ActorLogging, Props}
 import storrent.TorrentFiles.Piece
 import storrent.pwp.Message._
-import storrent.pwp.{Message, PwpPeer}
+import storrent.pwp.{Message, PeerListener, PwpPeer}
 import storrent.store.LocalFileStore
 import storrent.{Peer, Torrent, TorrentFiles}
 
@@ -18,10 +18,10 @@ object TorrentSession {
 
   def props(metainfo: Torrent, downloadDir: String) = Props(classOf[TorrentSession], metainfo, downloadDir)
 
-  case class PeerState(have: mutable.BitSet,
-                               choked: Boolean,
-                               interested: Boolean
-                               /*, stats*/)
+  case class PeerState(have: mutable.BitSet = mutable.BitSet.empty,
+                       choked: Boolean = true,
+                       interested: Boolean = false
+                       /*, stats*/)
 
   case class FoundPeers(peers: List[Peer])
 
@@ -35,7 +35,8 @@ object TorrentSession {
   * TorrentSession是运行torrent的中心逻辑，它通过PwpPeer/DhtPeer/UtpPeer与外部peer通讯/获取数据
   */
 class TorrentSession(metainfo: Torrent,
-                     downloadDir: String) extends Actor with ActorLogging {
+                     downloadDir: String)
+  extends Actor with ActorLogging with PeerListener {
 
   import TorrentSession._
 
@@ -44,7 +45,7 @@ class TorrentSession(metainfo: Torrent,
 
   val hostPeer = context.actorOf(PwpPeer.props(metainfo, 7778))
 
-  val peerStates = mutable.Map[Peer, PeerState]()
+  var peerStates = Map[Peer, PeerState]().withDefault(p => PeerState())
 
   val completedPieces = mutable.Set(resume(): _*)
   log.info("Resumed pieces: {}", completedPieces)
@@ -70,9 +71,8 @@ class TorrentSession(metainfo: Torrent,
 
   override def receive: Receive = {
     case (peer: Peer, msg: Message) =>
-//      log.info("Got message from[{}]: {}", peer, msg)
-      val state = peerStates.getOrElseUpdate(peer, PeerState(mutable.BitSet.empty, true, true))
-      handleMessage(peer, state, msg)
+      //      log.info("Got message from[{}]: {}", peer, msg)
+      handleMessage(peer, peerStates(peer), msg)
   }
 
   def handleMessage(peer: Peer, state: PeerState, msg: Message): Unit = msg match {
@@ -130,7 +130,7 @@ class TorrentSession(metainfo: Torrent,
    * 在peer状态发生变化，或者各个piece集合发生变化时，应该调用该方法，选取下一步待下载的piece
    */
   def schedulePieceRequests(): Unit = {
-//    log.info("Schedule requests, states={}", peerStates)
+    //    log.info("Schedule requests, states={}", peerStates)
     if (pendingPieces.nonEmpty) {
       if (!flushPieceRequest()) {
         //之前schedule的piece无法正常下载，或被对端choke. 重新选择piece
@@ -139,8 +139,8 @@ class TorrentSession(metainfo: Torrent,
     }
 
     val waitingPieces = incompletePieces
-        .filterNot(inflightPieces.contains(_))
-        .filter { p =>
+      .filterNot(inflightPieces.contains(_))
+      .filter { p =>
       peerStates.values.find(_.have.contains(p.idx)).isDefined
     }
 
@@ -156,8 +156,8 @@ class TorrentSession(metainfo: Torrent,
     val fired = new ArrayBuffer[Piece]()
     for (piece <- pendingPieces) {
       for (peer <- peerForPiece(piece)) {
-          hostPeer ! Tuple2(peer, Request(piece.idx, 0, piece.length.toInt))
-          fired += piece
+        hostPeer ! Tuple2(peer, Request(piece.idx, 0, piece.length.toInt))
+        fired += piece
       }
     }
 
@@ -190,5 +190,13 @@ class TorrentSession(metainfo: Torrent,
       val fileLength = f.length
       pieceLength == fileLength && util.Arrays.equals(fs.checksum(f), piece.hash)
     }).map(_.path.split("/").last.split("\\.")(1).toInt).map(files.pieces).toList
+  }
+
+  override def onPeerAdded(peer: Peer): Unit = ()
+
+  override def onPeerRemoved(peer: Peer): Unit = {
+    log.info("Removing peer: {}", peer)
+    peerStates -= peer
+    // removing requests
   }
 }

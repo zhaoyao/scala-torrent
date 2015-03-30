@@ -2,11 +2,8 @@ package storrent.pwp
 
 import java.nio.ByteBuffer
 
-/**
- * User: zhaoyao
- * Date: 3/13/15
- * Time: 17:28
- */
+
+
 trait Message {
   def id: Byte
   def payloadLength: Int = 0
@@ -39,6 +36,9 @@ object Message {
   val MsgCancel: Byte = 0x8
 
   abstract class MessageBase(val id: Byte) extends Message
+
+  trait StateOriented
+  trait DataOriented
 
   val ZeroLengthMessage = ByteBuffer.allocate(4)
   /**

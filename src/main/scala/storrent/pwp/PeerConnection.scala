@@ -35,9 +35,9 @@ class PeerConnection(infoHash: String,
   var decoder: MessageDecoder = _
   val handshake: Handshake = Handshake(infoHash, selfPeerId)
 
-  val choked = new AtomicBoolean(true)
+  var choked = true
 
-  val interested = new AtomicBoolean(false)
+  var interested = false
 
   val have = mutable.Set[Int]()
 
@@ -100,11 +100,25 @@ class PeerConnection(infoHash: String,
   }
 
   def connected(conn: ActorRef): Receive = {
-    case m: Message =>
-      /* forward message to target peer */
-      log.info("Forward pwp message => {}", m)
-      //TODO conditional write based on choked state
-      conn ! Write(ByteString(m.encode))
+    case m: Message => m match {
+      case _: StateOriented =>
+        conn ! Write(ByteString(m.encode))
+
+      case _: Piece =>
+        if (!interested) {
+          log.info("Drop piece message, cause peer is not intersected.")
+        } else {
+          conn ! Write(ByteString(m.encode))
+        }
+
+      case _: DataOriented =>
+        if (choked) {
+          log.info("Drop data oriented message, cause peer is choked.")
+        } else {
+          conn ! Write(ByteString(m.encode))
+        }
+
+    }
 
     case Received(data) =>
       handleInboundData(data)
@@ -121,19 +135,19 @@ class PeerConnection(infoHash: String,
   def handleInboundData(data: ByteString): Unit = {
     decodeMessage(data).foreach {
       case Choke =>
-        this.choked.set(true)
+        this.choked = true
         session ! Tuple2(targetPeer, Choke)
 
       case Unchoke =>
-        this.choked.set(false)
+        this.choked = false
         session ! Tuple2(targetPeer, Unchoke)
 
       case Interested =>
-        this.interested.set(true)
+        this.interested = true
         session ! Tuple2(targetPeer, Interested)
 
       case Uninterested =>
-        this.interested.set(false)
+        this.interested = false
         session ! Tuple2(targetPeer, Uninterested)
 
       case msg =>
