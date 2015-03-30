@@ -55,11 +55,10 @@ class LocalFileStore(dataDir: String) extends FileStore {
     }
   }
 
-  override def list(filter: (FileObject) => Boolean): Array[FileObject] = {
-    new File(dataDir).listFiles(new FileFilter {
+  override def list(filter: FileObject => Boolean): List[FileObject] = {
+    Option(new File(dataDir).listFiles(new FileFilter {
       override def accept(pathname: File): Boolean = filter(LocalFileObject(dataDir, pathname))
-    }).map(f => LocalFileObject(dataDir, f))
+    })).getOrElse(Array.empty).map(f => LocalFileObject(dataDir, f)).toList
   }
-
 
 }

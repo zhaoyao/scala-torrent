@@ -3,32 +3,37 @@ package storrent.client
 import java.nio.file.Paths
 import java.util
 
-import akka.actor.{Actor, ActorLogging}
+import akka.actor.{Props, Actor, ActorLogging}
 import storrent.TorrentFiles.Piece
+import storrent.pwp.Message._
+import storrent.pwp.{Message, PwpPeer}
 import storrent.store.LocalFileStore
 import storrent.{Peer, Torrent, TorrentFiles}
 
 import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
+import scala.util.Random
 
 object TorrentSession {
 
+  def props(metainfo: Torrent, downloadDir: String) = Props(classOf[TorrentSession], metainfo, downloadDir)
+
   case class PeerState(have: mutable.BitSet,
-                       choked: Boolean,
-                       unchoked: Boolean
-                       /*, stats*/)
+                               choked: Boolean,
+                               interested: Boolean
+                               /*, stats*/)
 
-  case class PeerHasPieces(peer: Peer, pieces: Set[Int])
+  case class FoundPeers(peers: List[Peer])
 
-  case class PeerPieceRequest(piece: Int, offset: Int, length: Int)
-
-  case class PeerChoked(peer: Peer)
-
-  case class PeerUnchoked(peer: Peer)
-
+  case class InboundPeer(peer: Peer)
 
 }
 
-
+/**
+  * TODO: 重新阅读pwp 协议/ utp 协议 / 以及dht 协议
+  *
+  * TorrentSession是运行torrent的中心逻辑，它通过PwpPeer/DhtPeer/UtpPeer与外部peer通讯/获取数据
+  */
 class TorrentSession(metainfo: Torrent,
                      downloadDir: String) extends Actor with ActorLogging {
 
@@ -36,6 +41,8 @@ class TorrentSession(metainfo: Torrent,
 
   val files = TorrentFiles.fromMetainfo(metainfo)
   val fs = new LocalFileStore(Paths.get(downloadDir, metainfo.metainfo.info.name).toString)
+
+  val hostPeer = context.actorOf(PwpPeer.props(metainfo, 7778))
 
   val peerStates = mutable.Map[Peer, PeerState]()
 
@@ -45,12 +52,12 @@ class TorrentSession(metainfo: Torrent,
   /**
    * completedPieces ++ incompletePieces shouldEqual files.pieces
    */
-  val incompletePieces = mutable.Set[Piece]()
+  val incompletePieces = mutable.Set(files.pieces: _*) -- completedPieces
 
   /**
    * 等待下载的piece
    */
-  var pendingPieces = mutable.Set(files.pieces: _*) -- completedPieces
+  var pendingPieces = mutable.Set[Piece]()
 
   /**
    * 下载中的piece
@@ -58,15 +65,64 @@ class TorrentSession(metainfo: Torrent,
   val inflightPieces = mutable.Set[Piece]()
 
   override def preStart(): Unit = {
-    log.info("Starting TorrentClient[{}]", metainfo.infoHash)
+    log.info("Starting TorrentSession[{}]", metainfo.infoHash)
   }
 
   override def receive: Receive = {
-    case PeerHasPieces(peer, pieces) =>
-      val state = peerStates.getOrElseUpdate(peer, PeerState(mutable.BitSet.empty))
-      pieces.foreach(state.have += _)
+    case (peer: Peer, msg: Message) =>
+//      log.info("Got message from[{}]: {}", peer, msg)
+      val state = peerStates.getOrElseUpdate(peer, PeerState(mutable.BitSet.empty, true, true))
+      handleMessage(peer, state, msg)
+  }
 
-    //
+  def handleMessage(peer: Peer, state: PeerState, msg: Message): Unit = msg match {
+    case Keepalive =>
+      schedulePieceRequests()
+
+    case Choke =>
+      peerStates += (peer -> state.copy(choked = true))
+
+    case Unchoke =>
+      peerStates += (peer -> state.copy(choked = false))
+      log.info("Unchoke peer {} => {}", peer, peerStates(peer).choked)
+
+    case Interested =>
+      peerStates += (peer -> state.copy(interested = true))
+
+    case Uninterested =>
+      peerStates += (peer -> state.copy(interested = false))
+
+    case Bitfield(pieces) =>
+      state.have ++= pieces
+      peerStates += (peer -> state)
+      schedulePieceRequests()
+
+    case Have(piece) =>
+      state.have += piece
+      peerStates += (peer -> state)
+      schedulePieceRequests()
+
+    case Message.Piece(piece, offset, data) =>
+      writePiece(piece, offset, data)
+    // onSuccess => peers.foreach(_ ! Have(piece))
+
+    case Request(piece, offset, length) =>
+    //read file
+    // sender ! Piece()
+
+
+  }
+
+  def writePiece(pieceIndex: Int, blockOffset: Int, blockData: Array[Byte]): Unit = {
+    log.info("Got piece {}, {}, {}", pieceIndex, blockOffset, blockData.length)
+    if (blockData.length == files.pieceLength(pieceIndex)) {
+    }
+
+
+    //validate piece
+    //update incompletePieces & completedPieces
+    //schedulePieceRequests
+
   }
 
   /**
@@ -74,7 +130,39 @@ class TorrentSession(metainfo: Torrent,
    * 在peer状态发生变化，或者各个piece集合发生变化时，应该调用该方法，选取下一步待下载的piece
    */
   def schedulePieceRequests(): Unit = {
+//    log.info("Schedule requests, states={}", peerStates)
+    if (pendingPieces.nonEmpty) {
+      if (!flushPieceRequest()) {
+        //之前schedule的piece无法正常下载，或被对端choke. 重新选择piece
+        pendingPieces.clear()
+      }
+    }
 
+    val waitingPieces = incompletePieces
+        .filterNot(inflightPieces.contains(_))
+        .filter { p =>
+      peerStates.values.find(_.have.contains(p.idx)).isDefined
+    }
+
+    for (p <- new Random().shuffle(waitingPieces).headOption) {
+      log.info("Scheduled piece: {}", p)
+      pendingPieces += p
+    }
+
+    flushPieceRequest()
+  }
+
+  def flushPieceRequest(): Boolean = {
+    val fired = new ArrayBuffer[Piece]()
+    for (piece <- pendingPieces) {
+      for (peer <- peerForPiece(piece)) {
+          hostPeer ! Tuple2(peer, Request(piece.idx, 0, piece.length.toInt))
+          fired += piece
+      }
+    }
+
+    pendingPieces --= fired
+    fired.nonEmpty
   }
 
   /**
@@ -82,12 +170,12 @@ class TorrentSession(metainfo: Torrent,
    * 需要考虑几个因素:
    *  1. peer是否拥有该piece
    *  2. 自己是否被对方choke
-   *  3. peer的历史下载速度如何
+   *  3. peer的历史下载速度如何 [*TODO]
    */
   def peerForPiece(piece: Piece): Option[Peer] = {
     peerStates.find { p =>
       val (_, state) = p
-      state.have(piece.idx)
+      !state.choked && state.have(piece.idx)
     }.map(_._1)
   }
 

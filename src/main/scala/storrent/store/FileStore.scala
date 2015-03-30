@@ -17,7 +17,7 @@ object FileStore {
 
 trait FileStore {
 
-  def list(filter: FileObject => Boolean = true): List[FileObject]
+  def list(filter: FileObject => Boolean): List[FileObject]
 
   def checksum(fileObject: FileObject): Array[Byte]
 

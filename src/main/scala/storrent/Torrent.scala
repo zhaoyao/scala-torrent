@@ -33,6 +33,14 @@ object Torrent {
           val path = elements.map(s => new String(s.asInstanceOf[BcString].value, "UTF-8")).mkString("/")
           TorrentFile(path, length, Some(md5sum))
 
+        case Seq(BcList(elements), BcNil, BcNil) =>
+          val path = elements.map(s => new String(s.asInstanceOf[BcString].value, "UTF-8")).mkString("/")
+          TorrentFile(path, 0, None)
+
+        case Seq(BcList(elements), BcNil, BcString(md5sum)) =>
+          val path = elements.map(s => new String(s.asInstanceOf[BcString].value, "UTF-8")).mkString("/")
+          TorrentFile(path, 0, Some(md5sum))
+
         case x => deserializationError("invalid file " + x)
       }
     }
@@ -61,8 +69,8 @@ object Torrent {
 
 }
 
-case class Info(_name: String,
-                length: Option[Long],
+case class Info(_name: Option[String],
+                _length: Option[Long],
                 md5sum: Option[Array[Byte]],
                 pieceLength: Long,
                 pieces: Array[Byte],
@@ -70,7 +78,9 @@ case class Info(_name: String,
                 files: Option[List[TorrentFile]],
                 nameUTF8: Option[String]) {
 
-  def name = nameUTF8.getOrElse(_name)
+  def length = _length.orElse(files.map(_.map(_.length).sum)).get
+
+  def name = nameUTF8.orElse(_name).getOrElse("")
 
   def isPrivate = _private.getOrElse(false)
 }

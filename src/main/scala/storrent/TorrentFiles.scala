@@ -12,7 +12,9 @@ import scala.collection.immutable.NumericRange.Exclusive
 
 object TorrentFiles {
 
-  case class Piece(idx: Int, hash: Array[Byte], locs: List[FileLoc])
+  case class Piece(idx: Int, hash: Array[Byte], locs: List[FileLoc]) {
+    def length = locs.map(_.length).sum
+  }
 
   case class FileLoc(fileIndex: Int,
                      offset: Long, length: Long)
@@ -170,7 +172,7 @@ object TorrentFiles {
   def fromMetainfo(torrent: Torrent): TorrentFiles = {
     val infoDict = torrent.metainfo.info
     val files: List[TorrentFile] = infoDict.files.orElse {
-      infoDict.length.map { l =>
+      infoDict._length.map { l =>
         List(TorrentFile(infoDict.name, l, infoDict.md5sum))
       }
     }.getOrElse(throw new RuntimeException("Invalid torrent"))
@@ -231,6 +233,11 @@ object TorrentFiles {
 case class TorrentFiles(files: List[TorrentFile],
                         pieces: List[Piece],
                         totalLength: Long) {
+
+  def pieceLength(i: Int) = {
+    require(i < pieces.length)
+    pieces(i).locs.map(_.length).sum
+  }
 
   def locateFiles(index: Int, offset: Int, length: Int): List[FileLoc] = {
     assert(index < pieces.size)

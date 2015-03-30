@@ -59,9 +59,7 @@ class TorrentFilesSpec extends WordSpecLike with Matchers {
 
       torrentFiles.pieces.length shouldEqual torrent.metainfo.info.pieces.length / 20
 
-      torrentFiles.totalLength shouldEqual torrent.metainfo.info.length.orElse {
-        torrent.metainfo.info.files.map(fs => fs.map(_.length).sum)
-      }.get
+      torrentFiles.totalLength shouldEqual torrent.metainfo.info.length
 
       torrentFiles.pieces.flatMap(_.locs.map(_.length)).sum shouldEqual torrentFiles.totalLength
 

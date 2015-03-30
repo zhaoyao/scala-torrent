@@ -28,6 +28,7 @@ class PwpPeer(torrent: Torrent,
   import context.dispatcher
   import storrent.pwp.PwpPeer._
 
+  val session = context.parent
   val peerConns = new mutable.HashMap[Peer, ActorRef]()
   val id = PeerId()
 
@@ -62,9 +63,10 @@ class PwpPeer(torrent: Torrent,
   override def receive: Receive = {
     case DoAnnounce =>
       //TODO 从stats中获取当前的下载进度
-      announce(0, 0, torrent.metainfo.info.length.get.toInt, "") onComplete {
+      announce(0, 0, torrent.metainfo.info.length.toInt, "") onComplete {
         case Success(peers) =>
           log.info("Got peers: {}", peers)
+          //TODO send peers to TorrentSession, let him judge
           peers.foreach { p =>
             peerConns.getOrElseUpdate(p, createPeer(p))
           }
@@ -73,6 +75,13 @@ class PwpPeer(torrent: Torrent,
       }
 
     case (p: Peer, msg: Message) =>
+      //转发消息
+      peerConns.get(p) match {
+        case Some(conn) =>
+          conn ! msg
+        case None =>
+          log.warning("Unable to route message[{}] to peer[{}]", msg, p)
+      }
     // handle pwp message
     // TorrentHandler ? PieceHandler ?
 
@@ -82,7 +91,7 @@ class PwpPeer(torrent: Torrent,
   }
 
   def createPeer(p: Peer): ActorRef = {
-    val c = context.actorOf(PeerConnection.props(torrent.infoHash, id, p))
+    val c = context.actorOf(PeerConnection.props(torrent.infoHash, id, p, session))
     context.watch(c)
     c
   }
