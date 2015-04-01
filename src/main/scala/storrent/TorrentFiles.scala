@@ -16,6 +16,8 @@ object TorrentFiles {
     def length = locs.map(_.length).sum
   }
 
+  case class PieceBlock(piece: Int, offset: Int, length: Int)
+
   case class FileLoc(fileIndex: Int,
                      offset: Long, length: Long)
 
@@ -180,7 +182,7 @@ object TorrentFiles {
     val pieceLength = infoDict.pieceLength.toInt
     val totalLength = files.map(_.length).sum
     val lastPieceLength = if (totalLength % pieceLength == 0) pieceLength else totalLength % pieceLength
-    val totalPieces = totalLength / pieceLength
+    val totalPieces = if (totalLength % pieceLength == 0) totalLength / pieceLength else (totalLength / pieceLength) + 1
 
     @tailrec
     def buildLocations(f: TorrentFile,
@@ -234,9 +236,9 @@ case class TorrentFiles(files: List[TorrentFile],
                         pieces: List[Piece],
                         totalLength: Long) {
 
-  def pieceLength(i: Int) = {
+  def pieceLength(i: Int): Int = {
     require(i < pieces.length)
-    pieces(i).locs.map(_.length).sum
+    pieces(i).locs.map(_.length).sum.toInt
   }
 
   def locateFiles(index: Int, offset: Int, length: Int): List[FileLoc] = {

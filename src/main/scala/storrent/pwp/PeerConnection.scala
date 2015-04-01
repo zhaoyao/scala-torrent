@@ -5,16 +5,16 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 import akka.actor._
 import akka.io.Tcp._
-import akka.io.{IO, Tcp}
+import akka.io.{ IO, Tcp }
 import akka.util.ByteString
-import storrent.Peer
-import storrent.extension.{AdditionalMessageDecoding, HandshakeEnabled}
+import storrent.{ Slf4jLogging, ActorStack, Peer }
+import storrent.extension.{ AdditionalMessageDecoding, HandshakeEnabled }
 import storrent.pwp.Message._
 
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.concurrent.duration.DurationInt
-import scala.util.{Failure, Success, Try}
+import scala.util.{ Failure, Success, Try }
 
 object PeerConnection {
 
@@ -28,31 +28,31 @@ class PeerConnection(infoHash: String,
                      targetPeer: Peer,
                      session: ActorRef,
                      handshakeExtensions: Set[HandshakeEnabled with AdditionalMessageDecoding])
-  extends Actor with ActorLogging with Stash {
+    extends ActorStack with Slf4jLogging with Stash {
 
   import context.dispatcher
 
   var decoder: MessageDecoder = _
   val handshake: Handshake = Handshake(infoHash, selfPeerId)
 
-  var choked = true
+  var choked = false
 
   var interested = false
 
   val have = mutable.Set[Int]()
 
   override def preStart(): Unit = {
-    log.info("Creating peer connection for ih: {} to {}", infoHash, targetPeer)
+    logger.info("Creating peer connection for ih: {} to {}", Array(infoHash, targetPeer))
     IO(Tcp)(context.system) ! Connect(new InetSocketAddress(targetPeer.ip, targetPeer.port))
   }
 
-  override def receive: Receive = connecting
+  override def wrappedReceive: Receive = connecting
 
   object InterestedAck extends Event
 
   def connecting: Receive = {
-    case c@Connected(remote, local) =>
-      log.info("Connection to peer {} established", targetPeer)
+    case c @ Connected(remote, local) =>
+      logger.info("Connection to peer {} established", targetPeer)
       val conn = sender()
       conn ! Register(self)
 
@@ -63,7 +63,7 @@ class PeerConnection(infoHash: String,
       Try(Handshake.parse(data)) match {
         case Success((hs: Handshake, remaining: ByteString)) =>
           if ((hs.peerId != targetPeer.id && targetPeer.id != "") || hs.protocol != handshake.protocol) {
-            log.info("Invalid handshake: {}. peer={} ih={}", hs, targetPeer, infoHash)
+            logger.info("Invalid handshake: {}. peer={} ih={}", hs, targetPeer, infoHash)
             context stop self
 
           } else {
@@ -71,28 +71,25 @@ class PeerConnection(infoHash: String,
               .filter(_.isEnabled(hs)).map(_.asInstanceOf[AdditionalMessageDecoding]))
 
             handleInboundData(remaining)
-            sender ! Write(ByteString(Interested.encode), InterestedAck)
+
+            context become connected(sender())
+            unstashAll()
+            context.system.scheduler.schedule(5.seconds, 60.seconds, self, Keepalive)
 
           }
 
         case Failure(e) =>
-          log.info("Handshake parsing failed: {}", e.getMessage)
+          logger.info("Handshake parsing failed: {}", e.getMessage)
           context stop self
       }
 
-    case InterestedAck =>
-      log.info("Got InterestedAck")
-      context become connected(sender())
-      unstashAll()
-      context.system.scheduler.schedule(5.seconds, 60.seconds, self, Keepalive)
-
     case CommandFailed(_: Connect) =>
       //TODO retry
-      log.info("Peer[connecting] Unable to connect to peer {}", targetPeer)
+      logger.info("Peer[connecting] Unable to connect to peer {}", targetPeer)
       context stop self
 
     case PeerClosed =>
-      log.info("Peer[connecting] connection closed")
+      logger.info("Peer[connecting] connection closed")
       context stop self
 
     case _ => stash
@@ -100,25 +97,29 @@ class PeerConnection(infoHash: String,
   }
 
   def connected(conn: ActorRef): Receive = {
-    case m: Message => m match {
-      case _: StateOriented =>
-        conn ! Write(ByteString(m.encode))
-
-      case _: Piece =>
-        if (!interested) {
-          log.info("Drop piece message, cause peer is not intersected.")
-        } else {
+    case m: Message =>
+      logger.debug("Forwarding pwp msg: {}", m)
+      m match {
+        case _: StateOriented =>
           conn ! Write(ByteString(m.encode))
-        }
 
-      case _: DataOriented =>
-        if (choked) {
-          log.info("Drop data oriented message, cause peer is choked.")
-        } else {
+        case _: Piece =>
+          if (!interested) {
+            logger.info("Drop piece message, cause peer is not intersected.")
+          } else {
+            conn ! Write(ByteString(m.encode))
+          }
+
+        case _: DataOriented =>
+          if (choked) {
+            logger.info("Drop data oriented message, cause peer is choked.")
+          } else {
+            conn ! Write(ByteString(m.encode))
+          }
+
+        case _ =>
           conn ! Write(ByteString(m.encode))
-        }
-
-    }
+      }
 
     case Received(data) =>
       handleInboundData(data)
@@ -128,7 +129,7 @@ class PeerConnection(infoHash: String,
       context stop self
 
     case PeerClosed =>
-      log.info("Peer[connected] connection closed")
+      logger.info("Peer[connected] connection closed")
       context stop self
   }
 
@@ -161,7 +162,7 @@ class PeerConnection(infoHash: String,
   private def decodeMessage(data: ByteString, messages: List[Message] = Nil): List[Message] =
     decoder.decode(data) match {
       case (Some(msg), remaining) => decodeMessage(remaining, msg :: messages)
-      case (None, _) => messages.reverse
+      case (None, _)              => messages.reverse
     }
 
 }

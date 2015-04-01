@@ -1,6 +1,6 @@
 package storrent.store
 
-import java.io.{File, FileFilter}
+import java.io.{ File, FileFilter }
 
 import storrent.store.FileStore.FileObject
 

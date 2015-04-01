@@ -56,7 +56,7 @@ class MessageDecoder(extensions: Set[AdditionalMessageDecoding] = Set.empty,
         val mark = payload.get(i)
         for (bit <- 0 until 8) {
           if (((mark & 0x01 << bit) >> bit) == 1) {
-            pieces += i * 8 + (8 - bit)
+            pieces += i * 8 + (7 - bit)
           }
         }
       }

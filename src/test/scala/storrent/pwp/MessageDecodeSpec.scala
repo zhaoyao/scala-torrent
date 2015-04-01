@@ -61,7 +61,7 @@ class MessageDecodeSpec extends WordSpec with Matchers with MessageSpecBase {
         b.put(Integer.parseInt("10000000", 2).toByte)
       }))) {
         case (Some(m: Bitfield), d: ByteString) =>
-          m.pieceSet shouldEqual Set(1, 3, 5, 7, 9)
+          m.pieceSet shouldEqual Set(0, 2, 4, 6, 8)
           d.length shouldEqual 0
 
       }

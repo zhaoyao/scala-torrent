@@ -4,26 +4,26 @@ import akka.actor._
 import akka.pattern._
 import akka.util.Timeout
 import storrent.client.Announcer.Announce
-import storrent.client.{Announcer, TrackerResponse}
-import storrent.pwp.PeerListener.{PeerRemoved, PeerAdded}
-import storrent.{Peer, PeerId, Torrent}
+import storrent.client.{ Announcer, TrackerResponse }
+import storrent.pwp.PeerListener.{ PeerRemoved, PeerAdded }
+import storrent._
 
 import scala.collection.mutable
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
-import scala.util.{Failure, Success}
+import scala.util.{ Failure, Success }
 
 object PwpPeer {
 
   private object DoAnnounce
 
-  def props(torrent: Torrent, port: Int) = Props(classOf[PwpPeer], torrent, port)
+  def props(torrent: Torrent, port: Int, peerListener: ActorRef) = Props(classOf[PwpPeer], torrent, port, peerListener)
 
 }
 
 class PwpPeer(torrent: Torrent,
               port: Int,
-              peerListener: ActorRef) extends Actor with ActorLogging {
+              peerListener: ActorRef) extends ActorStack with Slf4jLogging {
 
   import context.dispatcher
   import storrent.pwp.PwpPeer._
@@ -34,8 +34,6 @@ class PwpPeer(torrent: Torrent,
 
   val announceTimeout = Timeout(5.minutes)
   val announcer = context.actorOf(Announcer.props(id, port, torrent, self))
-
-
 
   //TODO @stats(downloaded, uploaded) 如果这个采集器放在这里，那么就不够抽象了
   // 创建一个 TorrentStats 接口，在 TorrentHandler/PieceHandler的相关方法中传入，暴露修改接口
@@ -53,7 +51,7 @@ class PwpPeer(torrent: Torrent,
 
     resp.flatMap {
       case TrackerResponse.Success(_, peers, _, _) => Future.successful(peers)
-      case TrackerResponse.Error(msg) => Future.failed(new RuntimeException("announce failed: " + msg))
+      case TrackerResponse.Error(msg)              => Future.failed(new RuntimeException("announce failed: " + msg))
     }
   }
 
@@ -62,12 +60,12 @@ class PwpPeer(torrent: Torrent,
     context.system.scheduler.scheduleOnce(0.seconds, self, DoAnnounce)
   }
 
-  override def receive: Receive = {
+  override def wrappedReceive: Receive = {
     case DoAnnounce =>
       //TODO 从stats中获取当前的下载进度
       announce(0, 0, torrent.metainfo.info.length.toInt, "") onComplete {
         case Success(peers) =>
-          log.info("Got peers: {}", peers)
+          logger.info("Got peers: {}", peers)
           //TODO send peers to TorrentSession, let him judge
           peers.foreach { p =>
             peerConns.getOrElseUpdate(p, {
@@ -76,26 +74,29 @@ class PwpPeer(torrent: Torrent,
             })
           }
         case Failure(e) =>
-          log.error(e, "Announce failure")
+          logger.error("Announce failure", e)
       }
 
     case (p: Peer, msg: Message) =>
       //转发消息
       peerConns.get(p) match {
         case Some(conn) =>
-          conn ! msg
+          conn.forward(msg)
         case None =>
-          log.warning("Unable to route message[{}] to peer[{}]", msg, p)
+          logger.warn("Unable to route message[{}] to peer[{}]", Array(msg, p))
       }
     // handle pwp message
     // TorrentHandler ? PieceHandler ?
 
     case Terminated(c) =>
+      logger.info("Child Terminated {}", c)
       peerConns.retain((peer, conn) => {
         if (conn == c) {
           peerListener ! PeerRemoved(peer)
           false
-        } else true
+        } else {
+          true
+        }
       })
 
   }

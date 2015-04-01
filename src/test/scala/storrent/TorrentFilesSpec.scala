@@ -67,6 +67,8 @@ class TorrentFilesSpec extends WordSpecLike with Matchers {
 
       var lastLoc: (FileLoc, Int) = null
 
+      torrentFiles.pieces.last.length == torrentFiles.pieceLength(torrentFiles.pieces.last.idx)
+
       torrentFiles.pieces.foreach { piece =>
         piece.locs.foreach { loc =>
           val f = torrentFiles.files(loc.fileIndex)
@@ -91,12 +93,13 @@ class TorrentFilesSpec extends WordSpecLike with Matchers {
 
     "match original files" in {
       val targetTorrents = List(
-        "9FE44783704319D9DBAE418F745A1FB106E45B1F.torrent",
-        "41F6A92B74EA9744A834AF947860562391C63188.torrent",
-        "4732A62A3F529E78750417DB19CBDD9EC374BFD5.torrent",
-        "C637A172C655B27C27A03CE681DED7C622E56B6B.torrent",
-        "F65CC435888BDDC26C7FD6C8025C5A163FFA4C1D.torrent",
-        "ubuntu.torrent"
+        //        "9FE44783704319D9DBAE418F745A1FB106E45B1F.torrent",
+        //        "41F6A92B74EA9744A834AF947860562391C63188.torrent",
+        //        "4732A62A3F529E78750417DB19CBDD9EC374BFD5.torrent",
+        //        "C637A172C655B27C27A03CE681DED7C622E56B6B.torrent",
+        //        "F65CC435888BDDC26C7FD6C8025C5A163FFA4C1D.torrent",
+        //        "ubuntu.torrent",
+        "r.torrent"
       )
       targetTorrents.foreach(validatePieces)
     }

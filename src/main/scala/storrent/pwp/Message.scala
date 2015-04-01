@@ -2,8 +2,6 @@ package storrent.pwp
 
 import java.nio.ByteBuffer
 
-
-
 trait Message {
   def id: Byte
   def payloadLength: Int = 0
@@ -44,7 +42,7 @@ object Message {
   /**
    * A message of size 0.
    */
-  case object Keepalive extends Message {
+  case object Keepalive extends Message with StateOriented {
     override def id: Byte = -1
     override def encode: ByteBuffer = ZeroLengthMessage
     override def payloadLength: Int = -1 /* 抵消id的一字节长度 */
@@ -54,22 +52,22 @@ object Message {
   /**
    * A peer sends this message to a remote peer to inform the remote peer that it is being choked.
    */
-  case object Choke extends MessageBase(MsgChoke)
+  case object Choke extends MessageBase(MsgChoke) with StateOriented
 
   /**
    * A peer sends this message to a remote peer to inform the remote peer that it is no longer being choked.
    */
-  case object Unchoke extends MessageBase(MsgUnchoke)
+  case object Unchoke extends MessageBase(MsgUnchoke) with StateOriented
 
   /**
    * A peer sends this message to a remote peer to inform the remote peer of its desire to request data.
    */
-  case object Interested extends MessageBase(MsgInterested)
+  case object Interested extends MessageBase(MsgInterested) with StateOriented
 
   /**
    * A peer sends this message to a remote peer to inform it that it is not interested in any pieces from the remote peer.
    */
-  case object Uninterested extends MessageBase(MsgUninterested)
+  case object Uninterested extends MessageBase(MsgUninterested) with StateOriented
 
   /**
    * The payload is a number denoting the index of a piece that
@@ -83,7 +81,7 @@ object Message {
    *
    * Further, it MAY also send a request for that piece.
    */
-  case class Have(pieceIndex: Int) extends MessageBase(MsgHave) {
+  case class Have(pieceIndex: Int) extends MessageBase(MsgHave) with StateOriented {
     override def payloadLength: Int = 4
     override def fillPayload(b: ByteBuffer): Unit = b.putInt(pieceIndex)
   }
@@ -99,7 +97,7 @@ object Message {
    *
    * This message MUST not be sent at any other time during the communication.
    */
-  case class Bitfield(pieceSet: Set[Int]) extends MessageBase(MsgBitfield) {
+  case class Bitfield(pieceSet: Set[Int]) extends MessageBase(MsgBitfield) with StateOriented {
     override def payloadLength: Int = (pieceSet.max / 8) + 1
     override def fillPayload(b: ByteBuffer): Unit = {
       val bitfield = Array.fill[Byte](payloadLength)(0)
@@ -126,7 +124,7 @@ object Message {
    * | Piece Index | Block Offset | Block Length |
    * ---------------------------------------------
    */
-  case class Request(pieceIndex: Int, blockOffset: Int, blockLength: Int) extends MessageBase(MsgRequest) {
+  case class Request(pieceIndex: Int, blockOffset: Int, blockLength: Int) extends MessageBase(MsgRequest) with DataOriented {
     override def payloadLength: Int = 3 * 4
 
     override def fillPayload(b: ByteBuffer): Unit = {
@@ -148,7 +146,7 @@ object Message {
    * | Piece Index | Block Offset | Block Data |
    * -------------------------------------------
    */
-  case class Piece(pieceIndex: Int, blockOffset: Int, blockData: Array[Byte]) extends MessageBase(MsgPiece) {
+  case class Piece(pieceIndex: Int, blockOffset: Int, blockData: Array[Byte]) extends MessageBase(MsgPiece) with DataOriented {
     override def payloadLength: Int = 2 * 4 + blockData.length
 
     override def fillPayload(b: ByteBuffer): Unit = {
@@ -169,7 +167,7 @@ object Message {
    * | Piece Index | Block Offset | Block Length |
    * ---------------------------------------------
    */
-  case class Cancel(pieceIndex: Int, blockOffset: Int, blockLength: Int) extends MessageBase(MsgCancel) {
+  case class Cancel(pieceIndex: Int, blockOffset: Int, blockLength: Int) extends MessageBase(MsgCancel) with DataOriented {
     override def payloadLength: Int = 3 * 4
 
     override def fillPayload(b: ByteBuffer): Unit = {

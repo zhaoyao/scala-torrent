@@ -1,13 +1,13 @@
 package storrent.cmd
 
-import java.nio.file.{Paths, Files}
+import java.nio.file.{ Paths, Files }
 
 import akka.actor.ActorSystem
 import storrent.Torrent
 import storrent.client.TorrentSession
 import storrent.pwp.PwpPeer
 
-import scala.util.{Failure, Success}
+import scala.util.{ Failure, Success }
 
 /**
  * User: zhaoyao
@@ -18,7 +18,7 @@ object Download {
 
   def start(torrent: Torrent): Unit = {
     val system = ActorSystem("storrent")
-    val session = system.actorOf(TorrentSession.props(torrent, "/tmp/"))
+    val session = system.actorOf(TorrentSession.props(torrent, "file:///tmp/"))
 
   }
 

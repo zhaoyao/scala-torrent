@@ -1,6 +1,6 @@
 package storrent
 
-import java.io.InputStream
+import java.io.{ ByteArrayInputStream, SequenceInputStream, InputStream }
 import java.security.MessageDigest
 
 /**
@@ -128,5 +128,14 @@ object Util {
     }
 
     new String(chars)
+  }
+
+  implicit def toRichInputStream(str: InputStream) = new RichInputStream(str)
+  val EmptyInputStream: InputStream = new ByteArrayInputStream(Array.empty[Byte])
+
+  class RichInputStream(str: InputStream) {
+    // a bunch of other handy Stream functionality, deleted
+
+    def ++(str2: InputStream): InputStream = new SequenceInputStream(str, str2)
   }
 }

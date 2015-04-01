@@ -12,7 +12,7 @@ import scala.concurrent.Future
 object LocalFileStore {
 
   case class LocalFileObject(dataDir: String, file: File) extends FileObject {
-    override def path: String = file.getAbsolutePath.substring(new File(dataDir).getAbsolutePath.length+1)
+    override def path: String = file.getAbsolutePath.substring(new File(dataDir).getAbsolutePath.length + 1)
 
     override def length: Long = file.length()
   }
@@ -33,15 +33,15 @@ class LocalFileStore(dataDir: String) extends FileStore {
   override def read(path: String, offset: Int, length: Int): Array[Byte] = {
     val f = new RandomAccessFile(Paths.get(dataDir, path).toFile, "rw")
     val data = new Array[Byte](length.toInt)
-     try {
-       f.seek(offset)
-       val read = f.read(data)
-       if (read != length) {
-         throw new EOFException("Not enough data")
-       }
-     } finally {
-       f.close()
-     }
+    try {
+      f.seek(offset)
+      val read = f.read(data)
+      if (read != length) {
+        throw new EOFException("Not enough data")
+      }
+    } finally {
+      f.close()
+    }
     data
   }
 
