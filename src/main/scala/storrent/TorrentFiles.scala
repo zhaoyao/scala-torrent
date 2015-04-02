@@ -1,16 +1,20 @@
 package storrent
 
 import java.io.{ File, FileInputStream, FileNotFoundException, RandomAccessFile }
-import java.nio.ByteBuffer
+import java.nio.file.{ Files, Paths }
 import java.security.MessageDigest
 
 import storrent.TorrentFiles.{ FileLoc, Piece, TorrentFile }
 
 import scala.annotation.tailrec
-import scala.collection.immutable.NumericRange
-import scala.collection.immutable.NumericRange.Exclusive
 
 object TorrentFiles {
+
+  def main(a: Array[String]): Unit = {
+    val torrent = Torrent(Files.readAllBytes(Paths.get("src/test/resources/torrents/empty-files.torrent"))).get
+
+    println(torrent)
+  }
 
   case class Piece(idx: Int, hash: Array[Byte], locs: List[FileLoc]) {
     def length = locs.map(_.length).sum
@@ -195,7 +199,13 @@ object TorrentFiles {
         case (0, _) => (f, files, index, offset, locations.reverse)
 
         case (x, fileRemaining) if fileRemaining == 0 =>
-          buildLocations(files.head, index + 1, 0, files.tail, x, locations)
+          if (f.length == 0) {
+            //empty file
+            buildLocations(files.head, index + 1, 0, files.tail, x,
+              FileLoc(index, 0, 0) :: locations)
+          } else {
+            buildLocations(files.head, index + 1, 0, files.tail, x, locations)
+          }
 
         case (x, fileRemaining) if x > fileRemaining =>
           buildLocations(files.head, index + 1, 0, files.tail, x - fileRemaining,

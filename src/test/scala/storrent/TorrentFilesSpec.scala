@@ -104,6 +104,17 @@ class TorrentFilesSpec extends WordSpecLike with Matchers {
       targetTorrents.foreach(validatePieces)
     }
 
+    "parse empty files" in {
+      val torrent = Torrent(Files.readAllBytes(Paths.get("src/test/resources/torrents/empty-files.torrent"))).get
+
+      torrent.files.pieces(0).locs shouldEqual List(
+        FileLoc(0, 0, 0),
+        FileLoc(1, 0, 0),
+        FileLoc(2, 0, 5)
+      )
+
+    }
+
   }
 
   "Locate files" should {

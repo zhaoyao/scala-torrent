@@ -165,23 +165,33 @@ class TorrentSession(metainfo: Torrent,
     }
 
     store.writePiece(pieceIndex, blockOffset, blockData) match {
-      case Failure(_) => (false, None)
+      case Failure(_) => return (false, None)
       case Success(true) =>
         store.mergeBlocks(pieceIndex) match {
           case Left(piece) =>
             // piece completed
             completedPieces += pieceIndex
             missingBlocks -= pieceIndex
+            checkProgress()
             (true, Some(piece))
 
           case Right(leftBlocks) =>
             missingBlocks(pieceIndex) ++= leftBlocks
+            checkProgress()
             (true, None)
         }
       case Success(false) =>
         logger.debug("Skip already exists block")
         (true, None)
     }
+
+  }
+
+  private def checkProgress() = {
+    logger.info("Total pieces: %d, missing: %d, completed: %d, %.2f%%".format(
+      metainfo.files.pieces.size, missingBlocks.size, completedPieces.size,
+      (completedPieces.size.toFloat / metainfo.files.pieces.size) * 100
+    ))
   }
 
   /**
@@ -199,6 +209,7 @@ class TorrentSession(metainfo: Torrent,
       //TODO merge pieces to original file/dir structure
       //TODO stop scheudle for requests
       //TODO set state to finished && start seeding
+      store.mergePieces()
       return
     }
 
@@ -290,6 +301,8 @@ class TorrentSession(metainfo: Torrent,
     }
 
     logger.info("Resumed blocks => {}", resumed)
+
+    checkProgress()
   }
 
   def sendPeerMsg(target: Peer, msg: Message) = {

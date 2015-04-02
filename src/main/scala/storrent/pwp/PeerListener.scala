@@ -17,25 +17,6 @@ object PeerListener {
 
 }
 
-object Test1 {
-  class Test extends PeerListener {
-    override def onPeerAdded(peer: Peer): Unit = println("Peer added: " + peer)
-
-    override def onPeerRemoved(peer: Peer): Unit = println("Peer removed: " + peer)
-
-    override def wrappedReceive: Receive = {
-      case x => println("Got " + x)
-    }
-  }
-
-  def main(args: Array[String]): Unit = {
-    Torrent(Files.readAllBytes(Paths.get("/tmp/r.torrent"))) match {
-      case Success(t) =>
-        println(t)
-    }
-  }
-}
-
 /**
  * An actor who accepts `OnPeerAdded` and `OnPeerRemoved` messages, and call the `onPeerAdded` `onPeerRemoved` methods.
  * see TorrentSession. This must should work with PwpPeer, who sends the `OnPeerAdded` and `OnPeerRemoved` messages.
