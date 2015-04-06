@@ -6,7 +6,7 @@ import akka.actor.{ Actor, Props }
 import storrent.TorrentFiles.Piece
 import storrent.pwp.Message._
 import storrent.pwp.{ Message, PeerListener, PwpPeer }
-import storrent.{ Peer, Slf4jLogging, Torrent, TorrentFiles }
+import storrent._
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -33,7 +33,7 @@ object TorrentSession {
  */
 class TorrentSession(metainfo: Torrent,
                      storeUri: String)
-    extends Actor with Slf4jLogging with PeerListener {
+    extends ActorStack with Slf4jLogging with PeerListener {
 
   import TorrentSession._
 
@@ -119,6 +119,7 @@ class TorrentSession(metainfo: Torrent,
           // cancel blocks belongs to this piece
           cancelBlock(_.piece == pieceIndex)
           peerStates.foreach(p => sendPeerMsg(p._1, Have(pieceIndex)))
+        //TODO uninterested
 
         case (true, None) =>
           cancelBlock(blk => blk.piece == pieceIndex && blk.offset == offset)
@@ -263,9 +264,10 @@ class TorrentSession(metainfo: Torrent,
    */
   def resume() = {
 
-    val resumed: Map[Piece, List[PieceBlock]] = store.resume
+    val resumed: Map[Int, List[PieceBlock]] = store.resume()
     resumed.foreach { p =>
-      val (piece, blocks) = p
+      val (pieceIndex, blocks) = p
+      val piece = metainfo.files.pieces(pieceIndex)
 
       var lastBlock: PieceBlock = null
       val sortedBlocks = blocks.sortBy(_.offset)
@@ -274,12 +276,12 @@ class TorrentSession(metainfo: Torrent,
         if (lastBlock == null) {
           //first element
           if (blk.offset != 0) {
-            missingBlocks(piece.idx) ++= List(PieceBlock(blk.piece, 0, blk.offset))
+            missingBlocks(pieceIndex) ++= List(PieceBlock(blk.piece, 0, blk.offset))
           }
         } else {
 
           if (lastBlock.offset + lastBlock.length != blk.offset) {
-            missingBlocks(piece.idx) ++= List(PieceBlock(blk.piece, lastBlock.offset + lastBlock.length, blk.offset - lastBlock.offset + lastBlock.length))
+            missingBlocks(pieceIndex) ++= List(PieceBlock(blk.piece, lastBlock.offset + lastBlock.length, blk.offset - lastBlock.offset + lastBlock.length))
           }
         }
 
@@ -289,11 +291,12 @@ class TorrentSession(metainfo: Torrent,
       if (sortedBlocks.nonEmpty) {
         val last: PieceBlock = sortedBlocks.last
         if (last.offset + last.length != piece.length) {
-          missingBlocks(piece.idx) ++= List(PieceBlock(last.piece, last.offset + last.length, (piece.length - last.offset + last.length).toInt))
+          missingBlocks(pieceIndex) ++= List(PieceBlock(last.piece, last.offset + last.length, (piece.length - last.offset + last.length).toInt))
         }
       }
 
-      if (missingBlocks.isEmpty) completedPieces += piece.idx
+      if (missingBlocks.isEmpty)
+        completedPieces += piece.idx
     }
 
     metainfo.files.pieces.filter(p => !missingBlocks.contains(p.idx) && !completedPieces.contains(p.idx)).foreach { p =>
@@ -309,7 +312,10 @@ class TorrentSession(metainfo: Torrent,
     hostPeer ! ((target, msg))
   }
 
-  override def onPeerAdded(peer: Peer): Unit = ()
+  override def onPeerAdded(peer: Peer): Unit = {
+    sendPeerMsg(peer, Bitfield(completedPieces.toSet))
+    sendPeerMsg(peer, Unchoke)
+  }
 
   override def onPeerRemoved(peer: Peer): Unit = {
     logger.info("Removing peer: {}", peer)

@@ -1,15 +1,14 @@
 package storrent.pwp
 
 import java.net.InetSocketAddress
-import java.util.concurrent.atomic.AtomicBoolean
 
 import akka.actor._
 import akka.io.Tcp._
 import akka.io.{ IO, Tcp }
 import akka.util.ByteString
-import storrent.{ Slf4jLogging, ActorStack, Peer }
 import storrent.extension.{ AdditionalMessageDecoding, HandshakeEnabled }
 import storrent.pwp.Message._
+import storrent.{ ActorStack, Peer, Slf4jLogging }
 
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -18,8 +17,8 @@ import scala.util.{ Failure, Success, Try }
 
 object PeerConnection {
 
-  def props(infoHash: String, selfPeerId: String, target: Peer, session: ActorRef) =
-    Props(classOf[PeerConnection], infoHash, selfPeerId, target, session, Set.empty)
+  def props(infoHash: String, selfPeerId: String, target: Peer, session: ActorRef, inbound: Boolean = false) =
+    Props(classOf[PeerConnection], infoHash, selfPeerId, target, session, inbound, Set.empty)
 
 }
 
@@ -27,7 +26,8 @@ class PeerConnection(infoHash: String,
                      selfPeerId: String,
                      targetPeer: Peer,
                      session: ActorRef,
-                     handshakeExtensions: Set[HandshakeEnabled with AdditionalMessageDecoding])
+                     inbound: Boolean,
+                     handshakeExtensions: Set[HandshakeEnabled with AdditionalMessageDecoding] = Set.empty)
     extends ActorStack with Slf4jLogging with Stash {
 
   import context.dispatcher
@@ -41,9 +41,22 @@ class PeerConnection(infoHash: String,
 
   val have = mutable.Set[Int]()
 
+  var tcpConn: Option[ActorRef] = None
+
   override def preStart(): Unit = {
-    logger.info("Creating peer connection for ih: {} to {}", Array(infoHash, targetPeer))
-    IO(Tcp)(context.system) ! Connect(new InetSocketAddress(targetPeer.ip, targetPeer.port))
+    if (!inbound) {
+      logger.info(s"Creating peer connection for ih: $infoHash to $targetPeer")
+      IO(Tcp)(context.system) ! Connect(new InetSocketAddress(targetPeer.ip, targetPeer.port))
+    } else {
+      logger.info(s"Accepted peer connection for ih: $infoHash from $targetPeer")
+    }
+
+  }
+
+  override def postStop(): Unit = {
+    for (c <- tcpConn) {
+      c ! Close
+    }
   }
 
   override def wrappedReceive: Receive = connecting
@@ -54,8 +67,9 @@ class PeerConnection(infoHash: String,
     case c @ Connected(remote, local) =>
       logger.info("Connection to peer {} established", targetPeer)
       val conn = sender()
-      conn ! Register(self)
+      tcpConn = Some(conn)
 
+      conn ! Register(self)
       conn ! Write(ByteString(handshake.encode))
     //TODO detect handshake timeout
 
@@ -152,7 +166,7 @@ class PeerConnection(infoHash: String,
         session ! Tuple2(targetPeer, Uninterested)
 
       case msg =>
-        //        log.info("Pwp message => {}", msg)
+        logger.debug(s"Pwp message => $msg")
         // should we let torrent client handle peer timeout ?
         session ! Tuple2(targetPeer, msg)
     }

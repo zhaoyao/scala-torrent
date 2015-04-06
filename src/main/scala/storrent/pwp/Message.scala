@@ -98,7 +98,7 @@ object Message {
    * This message MUST not be sent at any other time during the communication.
    */
   case class Bitfield(pieceSet: Set[Int]) extends MessageBase(MsgBitfield) with StateOriented {
-    override def payloadLength: Int = (pieceSet.max / 8) + 1
+    override def payloadLength: Int = if (pieceSet.isEmpty) 1 else (pieceSet.max / 8) + 1
     override def fillPayload(b: ByteBuffer): Unit = {
       val bitfield = Array.fill[Byte](payloadLength)(0)
       pieceSet.foreach { pieceIndex =>

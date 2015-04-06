@@ -1,6 +1,6 @@
 package storrent
 
-import java.io.{ ByteArrayInputStream, SequenceInputStream, InputStream }
+import java.io._
 import java.security.MessageDigest
 
 /**
@@ -137,5 +137,24 @@ object Util {
     // a bunch of other handy Stream functionality, deleted
 
     def ++(str2: InputStream): InputStream = new SequenceInputStream(str, str2)
+  }
+
+  def listFiles(dir: String, rec: Boolean = false)(f: File => Boolean): Array[File] = {
+    val top = Option(new File(dir).listFiles()).getOrElse(Array.empty)
+    if (rec) top.flatMap(listFiles(_, rec)(f))
+    else top.filter(f)
+  }
+
+  def listFiles(file: File, rec: Boolean)(f: File => Boolean): Array[File] = if (file.isDirectory) {
+    listFiles(file.toString, rec)(f)
+  } else if (f(file)) Array(file) else Array.empty
+
+  def unblockRead[T](filename: String, raf: RandomAccessFile, n: Int)(op: (RandomAccessFile => T)) = {
+    System.err.println(filename + " read: " + n + ", current offset: " + raf.getFilePointer + ", length: " + raf.length())
+    if (raf.length() - raf.getFilePointer < n) {
+      System.err.println(filename + " not enough data: " + n + ", current offset: " + raf.getFilePointer + ", length: " + raf.length())
+      throw new IllegalArgumentException(filename + " not enough data: " + n + ", current offset: " + raf.getFilePointer + ", length: " + raf.length())
+    }
+    op(raf)
   }
 }

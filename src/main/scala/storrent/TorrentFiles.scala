@@ -10,12 +10,6 @@ import scala.annotation.tailrec
 
 object TorrentFiles {
 
-  def main(a: Array[String]): Unit = {
-    val torrent = Torrent(Files.readAllBytes(Paths.get("src/test/resources/torrents/empty-files.torrent"))).get
-
-    println(torrent)
-  }
-
   case class Piece(idx: Int, hash: Array[Byte], locs: List[FileLoc]) {
     def length = locs.map(_.length).sum
   }
@@ -23,7 +17,8 @@ object TorrentFiles {
   case class PieceBlock(piece: Int, offset: Int, length: Int)
 
   case class FileLoc(fileIndex: Int,
-                     offset: Long, length: Long)
+                     offset: Long,
+                     length: Int)
 
   case class TorrentFile(path: String,
                          length: Long,
@@ -185,7 +180,7 @@ object TorrentFiles {
 
     val pieceLength = infoDict.pieceLength.toInt
     val totalLength = files.map(_.length).sum
-    val lastPieceLength = if (totalLength % pieceLength == 0) pieceLength else totalLength % pieceLength
+    val lastPieceLength = if (totalLength % pieceLength == 0) pieceLength else (totalLength % pieceLength).toInt
     val totalPieces = if (totalLength % pieceLength == 0) totalLength / pieceLength else (totalLength / pieceLength) + 1
 
     @tailrec
@@ -193,7 +188,7 @@ object TorrentFiles {
                        index: Int,
                        offset: Long,
                        files: List[TorrentFile],
-                       pieceRemaining: Long,
+                       pieceRemaining: Int,
                        locations: List[FileLoc]): (TorrentFile, List[TorrentFile], Int, Long, List[FileLoc]) = {
       (pieceRemaining, f.length - offset) match {
         case (0, _) => (f, files, index, offset, locations.reverse)
@@ -208,8 +203,8 @@ object TorrentFiles {
           }
 
         case (x, fileRemaining) if x > fileRemaining =>
-          buildLocations(files.head, index + 1, 0, files.tail, x - fileRemaining,
-            FileLoc(index, offset, fileRemaining) :: locations)
+          buildLocations(files.head, index + 1, 0, files.tail, x - fileRemaining.toInt,
+            FileLoc(index, offset, fileRemaining.toInt) :: locations)
 
         case (x, fileRemaining) =>
           buildLocations(f, index, offset + x, files, 0,
@@ -230,7 +225,7 @@ object TorrentFiles {
         case Nil => result.reverse
 
         case hash :: tail =>
-          val pl: Long = if (pieceIndex + 1 == totalPieces) lastPieceLength else pieceLength
+          val pl: Int = if (pieceIndex + 1 == totalPieces) lastPieceLength else pieceLength
           val (file, fs, fileIndex, fileOffset, locs) = buildLocations(f, index, offset, files, pl, Nil)
           buildPieces(file, fileIndex, fileOffset, fs, pieceIndex + 1, tail,
             Piece(pieceIndex, hash, locs) :: result)
@@ -256,17 +251,17 @@ case class TorrentFiles(files: List[TorrentFile],
 
     // (15312, 1024), (15312+1024, 1024), (15312+1024*2, 5)
     @tailrec
-    def offsetPair(xs: List[FileLoc], ret: List[(FileLoc, (Long, Long))]): List[(FileLoc, (Long, Long))] = xs match {
+    def offsetPair(xs: List[FileLoc], ret: List[(FileLoc, (Int, Int))]): List[(FileLoc, (Int, Int))] = xs match {
       case Nil       => ret
       case h :: tail => offsetPair(tail, (h, (tail.map(_.length).sum, tail.map(_.length).sum + h.length)) :: ret)
     }
 
     val fileWithOffset = offsetPair(pieces(index).locs.reverse, Nil)
 
-    def in(i: Long, r: (Long, Long)): Boolean = (r._1 <= i && i < r._2)
+    def in(i: Long, r: (Int, Int)): Boolean = (r._1 <= i && i < r._2)
 
     fileWithOffset.filter(p => {
-      (in(offset, p._2) || in(offset + length, p._2)) || (offset <= p._2._1 && p._2._2 < offset + length)
+      (in(offset, p._2) || in(offset + length, p._2)) || (offset <= p._2._1 && p._2._2 <= offset + length)
     }) match {
       case Nil => Nil
 
@@ -278,7 +273,7 @@ case class TorrentFiles(files: List[TorrentFile],
         val f = first._1.copy(offset = first._1.offset + (offset - first._2._1))
         val l = last._1.copy(length = (offset + length) - last._2._1)
 
-        f :: (l :: tail.reverse.tail.reverse.map(_._1)).reverse
+        f :: tail.init.map(_._1) ::: List(l)
     }
 
   }

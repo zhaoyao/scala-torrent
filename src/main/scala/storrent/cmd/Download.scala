@@ -18,12 +18,12 @@ object Download {
 
   def start(torrent: Torrent): Unit = {
     val system = ActorSystem("storrent")
-    val session = system.actorOf(TorrentSession.props(torrent, "file:///tmp/"))
+    val session = system.actorOf(TorrentSession.props(torrent, "file:///Users/zhaoyao/storrent_download22"))
 
   }
 
   def main(args: Array[String]): Unit = {
-    Torrent(Files.readAllBytes(Paths.get(args(0)))) match {
+    Torrent(Files.readAllBytes(Paths.get("/Users/zhaoyao/Workspaces/Gump/godzilla/webapp/r2.torrent"))) match {
       case Success(torrent) =>
         start(torrent)
 

@@ -6,7 +6,7 @@ import java.nio.file.Files
 import java.util
 
 import org.slf4j.LoggerFactory
-import storrent.TorrentFiles.Piece
+import storrent.TorrentFiles.{ Piece, TorrentFile }
 import storrent.{ Torrent, Util }
 
 import scala.collection.mutable
@@ -36,7 +36,7 @@ trait TorrentStore {
 
   def torrent: Torrent
 
-  def resume: Map[Piece, List[PieceBlock]]
+  def resume(): Map[Int, List[PieceBlock]]
 
   def mergeBlocks(pieceIndex: Int): Either[Piece, List[PieceBlock]]
 
@@ -113,13 +113,13 @@ class LocalFilesystem(val torrent: Torrent,
    * piece => blocks
    *
    */
-  override def resume: Map[Piece, List[PieceBlock]] = {
+  override def resume(): Map[Int, List[PieceBlock]] = try {
     torrent.files.pieces.foreach(p => mergeBlocks(p.idx))
     mergePieces()
+    mergeTmpFiles()
     //
 
     def listDir(dir: File): Array[File] = Option(dir.listFiles()).getOrElse(Array.empty).flatMap { f =>
-      println(f)
       if (f.isDirectory) {
         listDir(f)
       } else {
@@ -131,25 +131,21 @@ class LocalFilesystem(val torrent: Torrent,
     val downloadedFiles = Option(new File(dataDir).listFiles(new FilenameFilter {
       override def accept(dir: File, name: String): Boolean =
         !name.startsWith(".") && !(name.endsWith(".blk") || name.endsWith(".piece"))
-    })).getOrElse(Array.empty).flatMap(listDir).map(dropPrefix).toSet
+    })).getOrElse(Array.empty).flatMap(listDir).map(dropPrefixOrSuffix).toSet
 
     if (torrent.files.files.map(f => (f.path, f.length)).toSet == downloadedFiles) {
       //完全下载完毕
-      torrent.files.pieces.map(p => (p, List(PieceBlock(p.idx, 0, p.length.toInt)))).toMap
+      torrent.files.pieces.map(p => (p.idx, List(PieceBlock(p.idx, 0, p.length.toInt)))).toMap
 
     } else {
 
-      val result = mutable.Map[Piece, List[PieceBlock]]().withDefault(_ => Nil)
-
-      //1. 读取 .st 文件 获取已经写入的 piece
-      //2. 检测 与 .torrent 文件匹配的文件 获取与该文件重合的piece
-      //3. 读取 .blk .piece 文件
+      val result = mutable.Map[Int, Set[PieceBlock]]().withDefault(_ => Set.empty)
 
       //中间文件
-      Option(new File(dataDir).listFiles).getOrElse(Array.empty).foreach { f =>
-        f.getName match {
+      Util.listFiles(dataDir, rec = true)(_ => true).foreach { f =>
+        f.getAbsoluteFile.getName match {
           case blockFileRegex(pieceIndex, offset, length) =>
-            result(torrent.files.pieces(pieceIndex.toInt)) ++= List(PieceBlock(pieceIndex.toInt, offset.toInt, length.toInt))
+            result(pieceIndex.toInt) ++= Set(PieceBlock(pieceIndex.toInt, offset.toInt, length.toInt))
 
           case pieceFileRegex(pieceIndex) =>
             val piece = torrent.files.pieces(pieceIndex.toInt)
@@ -157,19 +153,56 @@ class LocalFilesystem(val torrent: Torrent,
             val fileLength = f.length
 
             if (pieceLength == fileLength && util.Arrays.equals(checksum(f), piece.hash)) {
-              result(piece) = List(PieceBlock(piece.idx, 0, piece.length.toInt))
+              result(pieceIndex.toInt) = Set(PieceBlock(piece.idx, 0, piece.length.toInt))
             } else {
               // remove piece
               f.delete()
             }
 
-          case _ =>
+          case filename if filename.endsWith(".st") =>
+            val raf = new RandomAccessFile(f, "r")
+            try {
+              for ((tf, index) <- torrentFile(f)) {
+                fileMapping(index).foreach { pieceIndex =>
+                  if (raf.readInt() == 1) {
+                    val locsContainFiles = torrent.files.pieces(pieceIndex).locs.filter(_.fileIndex == index)
+                    locsContainFiles.zipWithIndex.foreach { p =>
+                      val (fileLoc, i) = p
+                      val pieceOffset = locsContainFiles.take(i).map(_.length).sum.toInt
+                      result(pieceIndex) = Set(PieceBlock(pieceIndex, pieceOffset, fileLoc.length.toInt))
+                    }
+                  }
+                }
+              }
+            } finally raf.close
+
+          case filename if torrentFile(f).nonEmpty =>
+            if (torrentFile(f).get._1.length == f.length()) {
+              for ((tf, index) <- torrentFile(f)) {
+                fileMapping(index).foreach { pieceIndex =>
+                  val locsContainFiles = torrent.files.pieces(pieceIndex).locs.filter(_.fileIndex == index)
+                  locsContainFiles.zipWithIndex.foreach { p =>
+                    val (fileLoc, i) = p
+                    val pieceOffset = locsContainFiles.take(i).map(_.length).sum.toInt
+                    result(pieceIndex) = Set(PieceBlock(pieceIndex, pieceOffset, fileLoc.length.toInt))
+                  }
+                }
+              }
+
+            } else {
+              f.delete()
+            }
+
         }
       }
 
-      result.toMap
+      result.map(p => (p._1, p._2.toList)).toMap
     }
+  } catch {
+    case NonFatal(e) => e.printStackTrace(); Map.empty
   }
+
+  private def torrentFile(f: File): Option[(TorrentFile, Int)] = torrent.files.files.zipWithIndex.find(_._1.path == dropPrefixOrSuffix(f)._1)
 
   override def writePiece(piece: Int, offset: Int, data: Array[Byte]): Try[Boolean] =
     Try {
@@ -194,12 +227,8 @@ class LocalFilesystem(val torrent: Torrent,
         false
       } else {
         val f = new RandomAccessFile(bf, "rw")
+
         try {
-          if (f.length() == 0) {
-            //pre-allocate file
-            f.setLength(torrent.files.pieceLength(piece))
-          }
-          f.seek(offset)
           f.write(data)
           true
         } finally {
@@ -209,6 +238,7 @@ class LocalFilesystem(val torrent: Torrent,
 
     }.recoverWith {
       case NonFatal(e) =>
+        e.printStackTrace()
         blockFile(piece, offset, data.length).delete()
         logger.warn("Failed to write block", e)
         Failure(e)
@@ -241,8 +271,6 @@ class LocalFilesystem(val torrent: Torrent,
   }
 
   override def mergePieces(): Unit = {
-
-    //TODO 先写入临时文件，待文件确认完整后，去掉后缀名
     pieceFiles.foreach { f =>
       val pieceIndex = f.getName match {
         case pieceFileRegex(pieceIndex) => pieceIndex.toInt
@@ -253,42 +281,57 @@ class LocalFilesystem(val torrent: Torrent,
     }
   }
 
-  private def mergePieceFile(piece: Piece, pieceFile: File) = {
+  def mergeTmpFiles() = {
+    Util.listFiles(dataDir, true)({ f => f.getName.endsWith(".st") }).foreach { f =>
+      for ((tf, index) <- torrentFile(f)) {
+        val raf = new RandomAccessFile(f, "r")
+        if (renameTempFileIfCompleted(fileMapping(index), raf, tf.path)) {
+          logger.info("Merged temp file to {}", tf.path)
+        }
+      }
+    }
+  }
+
+  private def mergePieceFile(piece: Piece, pieceFile: File): Unit = {
+    if (!pieceFile.exists()) return
+
     val in = new RandomAccessFile(pieceFile, "r")
 
     try {
       var pos = 0l
       piece.locs.foreach { fileLoc =>
+        if (new File(dataDir, torrent.files.files(fileLoc.fileIndex).path).exists()) {
 
-        val tmpF = tmpFile(fileLoc.fileIndex)
-        val out = new RandomAccessFile(tmpF, "rw")
-        val headerLength = fileMapping(fileLoc.fileIndex).size * 4
-        var deleteTmpFile = false
+        } else {
+          val tmpF = tmpFile(fileLoc.fileIndex, ensureExist = true)
+          val out = new RandomAccessFile(tmpF, "rw")
+          val headerLength = fileMapping(fileLoc.fileIndex).size * 4
 
-        try {
-          // mark piece
-          val markPos = fileMapping(fileLoc.fileIndex).indexOf(piece.idx)
-          if (markPos < 0) {
-            throw new IllegalStateException("File not contains piece ?")
-          }
-          out.seek(markPos * 4)
-          val done = out.readInt() == 1
-
-          if (!done) {
-            out.seek(headerLength + fileLoc.offset)
-            // copy data
-            in.getChannel.transferTo(pos, fileLoc.length, out.getChannel)
+          try {
+            // mark piece
+            val markPos = fileMapping(fileLoc.fileIndex).indexOf(piece.idx)
+            if (markPos < 0) {
+              throw new IllegalStateException("File not contains piece ?")
+            }
             out.seek(markPos * 4)
-            out.writeInt(piece.idx)
-          }
+            val done = out.readInt == 1
 
-          // check piece markers
-          if (renameTempFileIfCompleted(fileMapping(fileLoc.fileIndex), out, torrent.files.files(fileLoc.fileIndex).path)) {
-            tmpF.delete()
-          }
+            if (!done) {
+              out.seek(headerLength + fileLoc.offset)
+              // copy data
+              in.getChannel.transferTo(pos, fileLoc.length, out.getChannel)
+              out.seek(markPos * 4)
+              out.writeInt(1)
+            }
 
-        } finally {
-          out.close()
+            // check piece markers
+            if (renameTempFileIfCompleted(fileMapping(fileLoc.fileIndex), out, torrent.files.files(fileLoc.fileIndex).path)) {
+              tmpF.delete()
+            }
+
+          } finally {
+            out.close()
+          }
         }
 
         pos += fileLoc.length
@@ -303,14 +346,18 @@ class LocalFilesystem(val torrent: Torrent,
                                 renameTo: String): Boolean = {
     val headerLength = pieces.size * 4
     raf.seek(0)
-    if (pieces.forall(_ => raf.readInt() == 1)) {
+
+    val markers = pieces.map(_ => raf.readInt())
+    logger.info(s"Check $renameTo: $markers")
+
+    if (markers.forall(_ == 1)) {
       // create real file
       val realFile = new File(dataDir, renameTo)
 
       // 与临时文件在同一层，无需检查文件夹是否存在了
       val rraf = new RandomAccessFile(realFile, "rw")
       try {
-        raf.getChannel.transferTo(headerLength, raf.length() - headerLength, raf.getChannel)
+        raf.getChannel.transferTo(headerLength, raf.length() - headerLength, rraf.getChannel) // transferTo 目标和本身是同一个channel的时候会死锁？
         true
       } finally rraf.close()
     } else {
@@ -318,13 +365,13 @@ class LocalFilesystem(val torrent: Torrent,
     }
   }
 
-  def tmpFile(fileIndex: Int): File = {
+  def tmpFile(fileIndex: Int, ensureExist: Boolean): File = {
     val f = new File(dataDir, torrent.files.files(fileIndex).path + ".st")
     if (!f.getParentFile.exists()) {
       f.getParentFile.mkdirs()
     }
 
-    if (!f.exists()) {
+    if (!f.exists() && ensureExist) {
       //write piece stat header
       val raf = new RandomAccessFile(f, "rw")
       try {
@@ -332,27 +379,29 @@ class LocalFilesystem(val torrent: Torrent,
       } finally {
         raf.close()
       }
-
-    } else {
-      //maybe partial write?
-      val raf = new RandomAccessFile(f, "rw")
-      try {
-        if (f.length() < fileMapping(fileIndex).length * 4) {
-          raf.setLength(0)
-          fileMapping(fileIndex).foreach(_ => raf.writeInt(-1))
-        }
-      } finally {
-        raf.close()
-      }
     }
-
     f
   }
 
-  override def readPiece(piece: Int, offset: Int, length: Int): Option[Array[Byte]] = {
-    val dataFile = pieceFile(piece)
+  override def readPiece(pieceIndex: Int, offset: Int, length: Int): Option[Array[Byte]] = {
+    val dataFile = pieceFile(pieceIndex)
     if (!dataFile.exists()) {
-      None
+      // try .st
+      val files = torrent.files.locateFiles(pieceIndex, offset, length)
+
+      var data = Array.empty[Byte]
+
+      files.foreach { fileLoc =>
+        if (tmpFileContainsPiece(fileLoc.fileIndex, pieceIndex)) {
+          // .st temp file
+          data ++= readFile(tmpFile(fileLoc.fileIndex, false), fileMapping(fileLoc.fileIndex).size * 4 + fileLoc.offset, fileLoc.length)
+        } else if (new File(dataDir, torrent.files.files(fileLoc.fileIndex).path).exists()) {
+          // original file
+          data ++= readFile(new File(dataDir, torrent.files.files(fileLoc.fileIndex).path), fileLoc.offset, fileLoc.length)
+        }
+      }
+
+      if (data.isEmpty) None else Some(data)
     } else {
       val f = new RandomAccessFile(dataFile, "rw")
       try {
@@ -364,6 +413,32 @@ class LocalFilesystem(val torrent: Torrent,
         f.close()
       }
     }
+  }
+
+  private def tmpFileContainsPiece(fileIndex: Int, pieceIndex: Int) = {
+    val f = tmpFile(fileIndex, false)
+    if (f.exists()) {
+      val raf = new RandomAccessFile(f, "r")
+      val pieceOffset = fileMapping(fileIndex).indexOf(pieceIndex) * 4
+      require(pieceOffset >= 0)
+
+      try {
+        raf.seek(pieceOffset)
+        raf.readInt() == 1
+      } finally raf.close()
+    } else {
+      false
+    }
+  }
+
+  private def readFile(f: File, offset: Long, length: Int): Array[Byte] = {
+    val raf = new RandomAccessFile(f, "r")
+    try {
+      raf.seek(offset)
+      val data = new Array[Byte](length)
+      raf.readFully(data)
+      data
+    } finally raf.close()
   }
 
   /**
@@ -415,7 +490,9 @@ class LocalFilesystem(val torrent: Torrent,
 
   private def pieceBlockFiles(piece: Int) = Option(new File(dataDir).listFiles(new FilenameFilter {
     override def accept(dir: File, name: String): Boolean = s"\\.$piece\\.\\d+\\.\\d+\\.blk$$".r.pattern.matcher(name).find()
-  })).getOrElse(Array.empty)
+  })).getOrElse(Array.empty[File]).sortBy(f => f.getName match {
+    case blockFileRegex(_, offset, _) => offset.toInt
+  })
 
   private def pieceFiles() = Option(new File(dataDir).listFiles(new FilenameFilter {
     override def accept(dir: File, name: String): Boolean = pieceFileRegex.pattern.matcher(name).find()
@@ -434,9 +511,14 @@ class LocalFilesystem(val torrent: Torrent,
     }
   }
 
-  private def dropPrefix(f: File) = {
+  private def dropPrefixOrSuffix(f: File) = {
     val dirLen = if (dataDir.endsWith("/")) dataDir.length else dataDir.length + 1
-    (f.getAbsolutePath.substring(dirLen), f.length())
+    val pathname = f.getAbsolutePath.substring(dirLen)
+    if (pathname.endsWith(".st")) {
+      (pathname.dropRight(3), f.length())
+    } else {
+      (pathname, f.length())
+    }
   }
 
 }

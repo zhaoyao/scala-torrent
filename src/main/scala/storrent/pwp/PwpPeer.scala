@@ -1,8 +1,12 @@
 package storrent.pwp
 
+import java.net.InetSocketAddress
+
 import akka.actor._
+import akka.io.Tcp._
 import akka.pattern._
 import akka.util.Timeout
+import akka.io._
 import storrent.client.Announcer.Announce
 import storrent.client.{ Announcer, TrackerResponse }
 import storrent.pwp.PeerListener.{ PeerRemoved, PeerAdded }
@@ -30,10 +34,13 @@ class PwpPeer(torrent: Torrent,
 
   val session = context.parent
   val peerConns = new mutable.HashMap[Peer, ActorRef]()
+  val connMapping = new mutable.HashMap[ActorRef, ActorRef]() /* Inbound PeerConnection => TcpConnection  */
   val id = PeerId()
 
   val announceTimeout = Timeout(5.minutes)
   val announcer = context.actorOf(Announcer.props(id, port, torrent, self))
+
+  IO(Tcp)(context.system) ! Bind(self, new InetSocketAddress("localhost", port))
 
   //TODO @stats(downloaded, uploaded) 如果这个采集器放在这里，那么就不够抽象了
   // 创建一个 TorrentStats 接口，在 TorrentHandler/PieceHandler的相关方法中传入，暴露修改接口
@@ -57,24 +64,47 @@ class PwpPeer(torrent: Torrent,
 
   override def preStart(): Unit = {
     //TODO start peer tcp listening
-    context.system.scheduler.scheduleOnce(0.seconds, self, DoAnnounce)
+
   }
 
-  override def wrappedReceive: Receive = {
+  override def wrappedReceive: Receive = creatingTcpServer
+
+  def creatingTcpServer: Receive = {
+    case b @ Bound(_) =>
+      logger.info(s"${torrent.infoHash} listen on $port success")
+      context become ready
+      context.system.scheduler.scheduleOnce(0.seconds, self, DoAnnounce)
+
+    case CommandFailed(_: Bind) =>
+      logger.warn(s"${torrent.infoHash} Failed to listen on $port")
+  }
+
+  def ready: Receive = {
     case DoAnnounce =>
       //TODO 从stats中获取当前的下载进度
-      announce(0, 0, torrent.metainfo.info.length.toInt, "") onComplete {
+      announce(0, torrent.metainfo.info.length.toInt, 0, "") onComplete {
         case Success(peers) =>
           logger.info("Got peers: {}", peers)
           //TODO send peers to TorrentSession, let him judge
           peers.foreach { p =>
             peerConns.getOrElseUpdate(p, {
               peerListener ! PeerAdded(p)
-              createPeer(p)
+              createPeer(p, inbound = false)
             })
           }
         case Failure(e) =>
           logger.error("Announce failure", e)
+      }
+
+    case c @ Connected(remote, _) =>
+      val conn = sender()
+      val peer = Peer("", remote.getAddress.getHostAddress, remote.getPort)
+      if (!peerConns.contains(peer)) {
+        peerConns(peer) = createPeer(peer, inbound = true)
+        peerConns(peer) forward c
+        peerListener ! PeerAdded(peer)
+      } else {
+        conn ! Close
       }
 
     case (p: Peer, msg: Message) =>
@@ -98,11 +128,10 @@ class PwpPeer(torrent: Torrent,
           true
         }
       })
-
   }
 
-  def createPeer(p: Peer): ActorRef = {
-    val c = context.actorOf(PeerConnection.props(torrent.infoHash, id, p, session))
+  def createPeer(p: Peer, inbound: Boolean): ActorRef = {
+    val c = context.actorOf(PeerConnection.props(torrent.infoHash, id, p, session, inbound), s"PeerConn-${p.hashCode()}")
     context.watch(c)
     c
   }
