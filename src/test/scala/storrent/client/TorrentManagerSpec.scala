@@ -15,7 +15,7 @@ import scala.concurrent.duration.DurationInt
  * Date: 3/13/15
  * Time: 14:50
  */
-class TorrentManagerTest(_system: ActorSystem) extends TestKit(_system)
+class TorrentManagerSpec(_system: ActorSystem) extends TestKit(_system)
     with ImplicitSender with WordSpecLike with Matchers with BeforeAndAfterAll {
 
   def this() = this(ActorSystem("TorrentManagerTest"))

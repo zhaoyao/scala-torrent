@@ -113,10 +113,18 @@ class PwpPeer(torrent: Torrent,
         case Some(conn) =>
           conn.forward(msg)
         case None =>
-          logger.warn("Unable to route message[{}] to peer[{}]", Array(msg, p))
+          logger.warn("Unable to route message[{}] to peer[{}]", msg, p)
       }
     // handle pwp message
     // TorrentHandler ? PieceHandler ?
+    case (p: Peer, Kill) =>
+      logger.info("Close peer connection: {}", p)
+      peerConns.get(p) match {
+        case Some(conn) =>
+          conn ! Kill
+        case None =>
+          logger.warn("Unable to kill peer connection: {}", p)
+      }
 
     case Terminated(c) =>
       logger.info("Child Terminated {}", c)

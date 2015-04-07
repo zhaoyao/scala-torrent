@@ -18,6 +18,7 @@ libraryDependencies := Seq(
   "io.spray" %% "spray-routing" % "1.3.2",
   "io.spray" %% "spray-json" % "1.3.1",
   "com.typesafe.akka" %% "akka-slf4j" % "2.3.8",
+  "com.typesafe.scala-logging" %% "scala-logging" % "3.1.0",
   "com.typesafe.akka" %% "akka-actor" % "2.3.8",
   "ch.qos.logback" % "logback-classic" % "1.0.13",
   "org.scalatest" %% "scalatest" % "2.2.2" % "test",

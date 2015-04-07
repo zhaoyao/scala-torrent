@@ -2,7 +2,7 @@ package storrent.client
 
 import java.nio.file.Paths
 
-import akka.actor.{ Actor, Props }
+import akka.actor.{ Kill, Actor, Props }
 import storrent.TorrentFiles.Piece
 import storrent.pwp.Message._
 import storrent.pwp.{ Message, PeerListener, PwpPeer }
@@ -91,7 +91,6 @@ class TorrentSession(metainfo: Torrent,
 
     case Unchoke =>
       peerStates += (peer -> state.copy(choked = false))
-      logger.info("Unchoke peer {} => {}", peer, peerStates(peer).choked)
 
     case Interested =>
       peerStates += (peer -> state.copy(interested = true))
@@ -133,10 +132,14 @@ class TorrentSession(metainfo: Torrent,
 
     case Request(piece, offset, length) =>
       store.readPiece(piece, offset, length) match {
-        case Some(data) =>
+        case Success(Some(data)) =>
           sendPeerMsg(peer, Message.Piece(piece, offset, data))
-        case None =>
+        case Success(None) =>
         // request non-exist piece block
+
+        case Failure(e) =>
+          //read failure
+          hostPeer ! ((peer, Kill))
       }
 
     case x: Cancel =>

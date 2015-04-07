@@ -7,6 +7,7 @@ import java.security.MessageDigest
 import storrent.TorrentFiles.{ FileLoc, Piece, TorrentFile }
 
 import scala.annotation.tailrec
+import scala.collection.mutable
 
 object TorrentFiles {
 
@@ -243,7 +244,7 @@ case class TorrentFiles(files: List[TorrentFile],
 
   def pieceLength(i: Int): Int = {
     require(i < pieces.length)
-    pieces(i).locs.map(_.length).sum.toInt
+    pieces(i).locs.map(_.length).sum
   }
 
   def locateFiles(index: Int, offset: Int, length: Int): List[FileLoc] = {
@@ -258,7 +259,7 @@ case class TorrentFiles(files: List[TorrentFile],
 
     val fileWithOffset = offsetPair(pieces(index).locs.reverse, Nil)
 
-    def in(i: Long, r: (Int, Int)): Boolean = (r._1 <= i && i < r._2)
+    def in(i: Long, r: (Int, Int)): Boolean = r._1 <= i && i < r._2
 
     fileWithOffset.filter(p => {
       (in(offset, p._2) || in(offset + length, p._2)) || (offset <= p._2._1 && p._2._2 <= offset + length)
@@ -270,11 +271,22 @@ case class TorrentFiles(files: List[TorrentFile],
 
       case first :: tail =>
         val last = tail.reverse.head
-        val f = first._1.copy(offset = first._1.offset + (offset - first._2._1))
+
+        val f = first._1.copy(offset = first._1.offset + (offset - first._2._1), length = first._1.length - (offset - first._2._1))
         val l = last._1.copy(length = (offset + length) - last._2._1)
 
         f :: tail.init.map(_._1) ::: List(l)
     }
+  }
 
+  val fileMapping: Map[Int, List[Int]] = {
+    // [piece,],[],[]
+    val m = mutable.Map[Int, List[Int]]()
+    pieces.foreach { piece =>
+      piece.locs.foreach { fileLoc =>
+        m(fileLoc.fileIndex) = piece.idx :: m.getOrElseUpdate(fileLoc.fileIndex, Nil)
+      }
+    }
+    m.toMap
   }
 }

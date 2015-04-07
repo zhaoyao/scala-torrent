@@ -131,6 +131,7 @@ object Util {
   }
 
   implicit def toRichInputStream(str: InputStream) = new RichInputStream(str)
+
   val EmptyInputStream: InputStream = new ByteArrayInputStream(Array.empty[Byte])
 
   class RichInputStream(str: InputStream) {
@@ -149,12 +150,14 @@ object Util {
     listFiles(file.toString, rec)(f)
   } else if (f(file)) Array(file) else Array.empty
 
-  def unblockRead[T](filename: String, raf: RandomAccessFile, n: Int)(op: (RandomAccessFile => T)) = {
-    System.err.println(filename + " read: " + n + ", current offset: " + raf.getFilePointer + ", length: " + raf.length())
-    if (raf.length() - raf.getFilePointer < n) {
-      System.err.println(filename + " not enough data: " + n + ", current offset: " + raf.getFilePointer + ", length: " + raf.length())
-      throw new IllegalArgumentException(filename + " not enough data: " + n + ", current offset: " + raf.getFilePointer + ", length: " + raf.length())
-    }
-    op(raf)
+  def readFile(f: File, offset: Long, length: Int): Array[Byte] = {
+    val raf = new RandomAccessFile(f, "r")
+    try {
+      raf.seek(offset)
+      val data = new Array[Byte](length)
+      raf.readFully(data)
+      data
+    } finally raf.close()
   }
+
 }

@@ -1,18 +1,18 @@
 package storrent
 
-import org.slf4j.{ LoggerFactory, MDC }
+import com.typesafe.scalalogging.StrictLogging
+import org.slf4j.MDC
 
 /**
  * User: zhaoyao
  * Date: 4/1/15
  * Time: 14:37
  */
-trait Slf4jLogging extends ActorStack {
+trait Slf4jLogging extends ActorStack with StrictLogging {
 
-  val logger = LoggerFactory.getLogger(getClass)
   private[this] val myPath = self.path.toString
 
-  logger.info("Starting actor " + getClass.getName)
+  logger.info(s"Starting actor ${getClass.getName}")
 
   override def receive: Receive = {
     case x =>
