@@ -72,7 +72,7 @@ object Torrent {
 case class Info(_name: Option[String],
                 _length: Option[Long],
                 md5sum: Option[Array[Byte]],
-                pieceLength: Long,
+                pieceLength: Int,
                 pieces: Array[Byte],
                 _private: Option[Boolean],
                 files: Option[List[TorrentFile]],
@@ -94,6 +94,8 @@ case class Metainfo(announce: Option[String],
                     info: Info)
 
 case class Torrent private (metainfo: Metainfo, raw: BcDict) {
+
+  import Torrent._
 
   val infoHashRaw = Util.sha1(raw.getFields("info").head.asBcDict().toByteArray())
   val infoHash = Util.encodeHex(infoHashRaw)

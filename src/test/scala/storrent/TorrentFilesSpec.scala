@@ -125,7 +125,7 @@ class TorrentFilesSpec extends WordSpecLike with Matchers {
         FileLoc(0, 0, 6),
         FileLoc(1, 0, 52),
         FileLoc(2, 0, 10)
-      ))), 0)
+      ))), 0, 0)
 
       files.locateFiles(0, 4, 15) shouldEqual List(FileLoc(0, 4, 2), FileLoc(1, 0, 13))
       files.locateFiles(0, 6, 15) shouldEqual List(FileLoc(1, 0, 15))

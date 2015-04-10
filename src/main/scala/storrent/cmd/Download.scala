@@ -23,7 +23,7 @@ object Download {
   }
 
   def main(args: Array[String]): Unit = {
-    Torrent(Files.readAllBytes(Paths.get("/Users/zhaoyao/Workspaces/Gump/godzilla/webapp/r2.torrent"))) match {
+    Torrent(Files.readAllBytes(Paths.get(args(0)))) match {
       case Success(torrent) =>
         start(torrent)
 

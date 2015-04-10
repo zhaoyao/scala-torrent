@@ -64,7 +64,7 @@ class PwpPeer(torrent: Torrent,
 
   override def preStart(): Unit = {
     //TODO start peer tcp listening
-
+    //    context.system.scheduler.schedule(10.seconds, 10.seconds, self, DumpPeers)
   }
 
   override def wrappedReceive: Receive = creatingTcpServer
@@ -127,7 +127,7 @@ class PwpPeer(torrent: Torrent,
       }
 
     case Terminated(c) =>
-      logger.info("Child Terminated {}", c)
+      //      logger.info("Child Terminated {}", c)
       peerConns.retain((peer, conn) => {
         if (conn == c) {
           peerListener ! PeerRemoved(peer)

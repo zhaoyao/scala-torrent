@@ -45,12 +45,11 @@ class PeerConnection(infoHash: String,
 
   override def preStart(): Unit = {
     if (!inbound) {
-      logger.info(s"Creating peer connection for ih: $infoHash to $targetPeer")
+      logger.debug(s"Creating peer connection for ih: $infoHash to $targetPeer")
       IO(Tcp)(context.system) ! Connect(new InetSocketAddress(targetPeer.ip, targetPeer.port))
     } else {
-      logger.info(s"Accepted peer connection for ih: $infoHash from $targetPeer")
+      logger.debug(s"Accepted peer connection for ih: $infoHash from $targetPeer")
     }
-
   }
 
   override def postStop(): Unit = {
@@ -76,7 +75,7 @@ class PeerConnection(infoHash: String,
     case Received(data) =>
       Try(Handshake.parse(data)) match {
         case Success((hs: Handshake, remaining: ByteString)) =>
-          if ((hs.peerId != targetPeer.id && targetPeer.id != "") || hs.protocol != handshake.protocol) {
+          if ((targetPeer.id != "" && hs.peerId != targetPeer.id) || hs.protocol != handshake.protocol) {
             logger.info("Invalid handshake: {}. peer={} ih={}", hs, targetPeer, infoHash)
             context stop self
 
@@ -99,20 +98,20 @@ class PeerConnection(infoHash: String,
 
     case CommandFailed(_: Connect) =>
       //TODO retry
-      logger.info("Peer[connecting] Unable to connect to peer {}", targetPeer)
+      //      logger.info(s"Peer[$targetPeer] Unable to connect to peer")
       context stop self
 
     case PeerClosed =>
-      logger.info("Peer[connecting] connection closed")
+      logger.info(s"Peer[$targetPeer] connection closed")
       context stop self
 
-    case _ => stash
+    case _ => stash()
 
   }
 
   def connected(conn: ActorRef): Receive = {
     case m: Message =>
-      logger.debug("Forwarding pwp msg: {}", m)
+      //      logger.debug(s"Forwarding[${targetPeer.ip}}] pwp msg: ${m}")
       m match {
         case _: StateOriented =>
           conn ! Write(ByteString(m.encode))
@@ -143,7 +142,7 @@ class PeerConnection(infoHash: String,
       context stop self
 
     case PeerClosed =>
-      logger.info("Peer[connected] connection closed")
+      logger.info(s"Peer[$targetPeer] connection closed")
       context stop self
   }
 
@@ -166,7 +165,7 @@ class PeerConnection(infoHash: String,
         session ! Tuple2(targetPeer, Uninterested)
 
       case msg =>
-        logger.debug(s"Pwp message => $msg")
+        logger.trace(s"Pwp message => $msg")
         // should we let torrent client handle peer timeout ?
         session ! Tuple2(targetPeer, msg)
     }

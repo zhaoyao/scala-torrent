@@ -1,10 +1,9 @@
 package storrent
 
 import java.io.{ File, FileInputStream, FileNotFoundException, RandomAccessFile }
-import java.nio.file.{ Files, Paths }
 import java.security.MessageDigest
 
-import storrent.TorrentFiles.{ FileLoc, Piece, TorrentFile }
+import storrent.TorrentFiles.{ Piece, TorrentFile }
 
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -13,9 +12,27 @@ object TorrentFiles {
 
   case class Piece(idx: Int, hash: Array[Byte], locs: List[FileLoc]) {
     def length = locs.map(_.length).sum
+
+    def numBlocks(blockSize: Int): Int = if (length % blockSize == 0) length / blockSize else (length / blockSize) + 1
+
+    def blockLength(index: Int, blockSize: Int) = if (index == numBlocks(blockSize)) {
+      //last block
+      if (length > index * blockSize) {
+        length - index * blockSize
+      } else length
+    } else {
+      blockSize
+    }
+
+    def blocks(blockSize: Int): Iterable[PieceBlock] = {
+      (0 until numBlocks(blockSize)).map { blkIndex =>
+        PieceBlock(idx, blkIndex,
+          blkIndex * blockSize, blockLength(blkIndex, blockSize))
+      }
+    }
   }
 
-  case class PieceBlock(piece: Int, offset: Int, length: Int)
+  case class PieceBlock(piece: Int, index: Int, offset: Int, length: Int)
 
   case class FileLoc(fileIndex: Int,
                      offset: Long,
@@ -64,6 +81,7 @@ object TorrentFiles {
           new Array[Byte](pieceLength),
           Nil,
           Nil),
+        pieceLength,
         targetFile.length()
       )
 
@@ -95,7 +113,7 @@ object TorrentFiles {
         targetFile.getAbsolutePath,
         files, pieceLength, 0, 0, 0, new Array[Byte](pieceLength), Nil, Nil)
 
-      TorrentFiles(files, pieces, totalLength)
+      TorrentFiles(files, pieces, pieceLength, totalLength)
     }
   }
 
@@ -137,8 +155,9 @@ object TorrentFiles {
 
           //next piece
           in.close()
-          return genPieces(basePath, files,
-            pieceLength, 0,
+          genPieces(basePath, files,
+            pieceLength,
+            0,
             currFileIndex,
             currFileOffset + currentPieceNeed,
             buffer,
@@ -152,7 +171,7 @@ object TorrentFiles {
           in.read(buffer, currPieceLength, fileRemaining.toInt)
 
           in.close()
-          return genPieces(basePath, files.tail, pieceLength,
+          genPieces(basePath, files.tail, pieceLength,
             currPieceLength + fileRemaining.toInt,
             currFileIndex + 1,
             0,
@@ -179,7 +198,7 @@ object TorrentFiles {
       }
     }.getOrElse(throw new RuntimeException("Invalid torrent"))
 
-    val pieceLength = infoDict.pieceLength.toInt
+    val pieceLength = infoDict.pieceLength
     val totalLength = files.map(_.length).sum
     val lastPieceLength = if (totalLength % pieceLength == 0) pieceLength else (totalLength % pieceLength).toInt
     val totalPieces = if (totalLength % pieceLength == 0) totalLength / pieceLength else (totalLength / pieceLength) + 1
@@ -234,13 +253,15 @@ object TorrentFiles {
     }
 
     val pieces = buildPieces(files.head, 0, 0, files.tail, 0, infoDict.pieces.sliding(20, 20).toList, Nil)
-    TorrentFiles(files, pieces, totalLength)
+    TorrentFiles(files, pieces, pieceLength, totalLength)
   }
 }
 
 case class TorrentFiles(files: List[TorrentFile],
                         pieces: List[Piece],
+                        fixedPieceLength: Int,
                         totalLength: Long) {
+  import TorrentFiles._
 
   def pieceLength(i: Int): Int = {
     require(i < pieces.length)

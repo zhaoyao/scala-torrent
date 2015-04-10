@@ -3,6 +3,7 @@ package storrent.client
 import java.io.{ RandomAccessFile, File }
 
 import org.scalatest.{ BeforeAndAfter, Matchers, WordSpec }
+import storrent.TorrentFiles.PieceBlock
 import storrent.pwp.Message.Piece
 import storrent.{ TorrentFiles, Util }
 
@@ -37,7 +38,7 @@ class LocalFilesystemSpec extends WordSpec with Matchers with BeforeAndAfter {
     "read whole piece" in {
       val path = "src/test/resources/filesystem/simple"
       val torrentFiles = TorrentFiles.fromLocalFiles(path, pieceLength = 4)
-      val fs = new LocalFilesystem(torrentFiles, path)
+      val fs = new LocalFilesystem(torrentFiles, path, TorrentSession.FixedBlockSize)
 
       torrentFiles.pieces.foreach { p =>
         fs.readPiece(p.idx, 0, p.length) match {
@@ -50,7 +51,7 @@ class LocalFilesystemSpec extends WordSpec with Matchers with BeforeAndAfter {
     "read half piece" in {
       val path = "src/test/resources/filesystem/simple"
       val torrentFiles = TorrentFiles.fromLocalFiles(path, pieceLength = 4)
-      val fs = new LocalFilesystem(torrentFiles, path)
+      val fs = new LocalFilesystem(torrentFiles, path, TorrentSession.FixedBlockSize)
 
       torrentFiles.pieces.foreach { p =>
 
@@ -66,7 +67,7 @@ class LocalFilesystemSpec extends WordSpec with Matchers with BeforeAndAfter {
     "read overflow" in {
       val path = "src/test/resources/filesystem/simple"
       val torrentFiles = TorrentFiles.fromLocalFiles(path, pieceLength = 4)
-      val fs = new LocalFilesystem(torrentFiles, path)
+      val fs = new LocalFilesystem(torrentFiles, path, TorrentSession.FixedBlockSize)
 
       fs.readPiece(0, 0, torrentFiles.pieces.head.length + 1) match {
         case Failure(e: IllegalArgumentException) => //pass
@@ -77,8 +78,8 @@ class LocalFilesystemSpec extends WordSpec with Matchers with BeforeAndAfter {
     "write block" in {
       val path = "src/test/resources/filesystem/simple"
       val torrentFiles = TorrentFiles.fromLocalFiles(path, pieceLength = 4)
-      val fs = new LocalFilesystem(torrentFiles, path)
-      val fs2 = new LocalFilesystem(torrentFiles, dataDir.toString)
+      val fs = new LocalFilesystem(torrentFiles, path, TorrentSession.FixedBlockSize)
+      val fs2 = new LocalFilesystem(torrentFiles, dataDir.toString, TorrentSession.FixedBlockSize)
 
       fs.readPiece(0, 0, torrentFiles.pieceLength(0) - 2) match {
         case Success(Some(d)) =>
@@ -89,22 +90,35 @@ class LocalFilesystemSpec extends WordSpec with Matchers with BeforeAndAfter {
 
     "merge blocks" in {
       val path = "src/test/resources/filesystem/simple"
+      val blockSize = 1
+
       val torrentFiles = TorrentFiles.fromLocalFiles(path, pieceLength = 4)
-      val fs = new LocalFilesystem(torrentFiles, path)
-      val fs2 = new LocalFilesystem(torrentFiles, dataDir.toString)
+      val fs = new LocalFilesystem(torrentFiles, path, blockSize)
+      val fs2 = new LocalFilesystem(torrentFiles, dataDir.toString, blockSize)
 
-      (fs.readPiece(0, 0, torrentFiles.pieceLength(0) - 2), fs.readPiece(0, torrentFiles.pieceLength(0) - 2, 2)) match {
-        case (Success(Some(d1)), Success(Some(d2))) =>
-          fs2.writePiece(0, 0, d1) shouldBe Success(true)
-          new File(dataDir, s".0.0.${d1.length}.blk").exists() shouldBe true
-          fs2.mergeBlocks(0) shouldEqual Right(List(PieceBlock(0, torrentFiles.pieceLength(0) - 2, 2)))
+      fs.readPiece(0, 0, 4) match {
+        case Success(Some(d)) =>
+          fs2.writePiece(0, 0, d.take(1)) shouldBe Success(true)
+          new File(dataDir, s".0.0.1.blk").exists() shouldBe true
+          fs2.mergeBlocks(0) shouldEqual Right(List(
+            PieceBlock(0, 1, 1, blockSize),
+            PieceBlock(0, 2, 2, blockSize),
+            PieceBlock(0, 3, 3, blockSize)
+          ))
 
-          fs2.writePiece(0, d1.length, d2) shouldBe Success(true)
-          new File(dataDir, s".0.${d1.length}.2.blk").exists() shouldBe true
+          fs2.writePiece(0, 1, d.take(2).drop(1)) shouldBe Success(true)
+          fs2.writePiece(0, 2, d.take(3).drop(2)) shouldBe Success(true)
+          fs2.writePiece(0, 3, d.take(4).drop(3)) shouldBe Success(true)
+
+          new File(dataDir, s".0.1.1.blk").exists() shouldBe true
+          new File(dataDir, s".0.2.1.blk").exists() shouldBe true
+          new File(dataDir, s".0.3.1.blk").exists() shouldBe true
           fs2.mergeBlocks(0) shouldEqual Left(torrentFiles.pieces.head)
 
-          new File(dataDir, s".0.0.${d1.length}.blk").exists() shouldBe false
-          new File(dataDir, s".0.${d1.length}.2.blk").exists() shouldBe false
+          new File(dataDir, s".0.0.1.blk").exists() shouldBe false
+          new File(dataDir, s".0.1.1.blk").exists() shouldBe false
+          new File(dataDir, s".0.2.1.blk").exists() shouldBe false
+          new File(dataDir, s".0.3.1.blk").exists() shouldBe false
           new File(dataDir, s".0.piece").exists() shouldBe true
 
         case _ => fail()
@@ -113,51 +127,66 @@ class LocalFilesystemSpec extends WordSpec with Matchers with BeforeAndAfter {
 
     "remove broken blocks when merging" in {
       val path = "src/test/resources/filesystem/simple"
+      val blockSize = 1
       val torrentFiles = TorrentFiles.fromLocalFiles(path, pieceLength = 4)
-      val fs = new LocalFilesystem(torrentFiles, path)
-      val fs2 = new LocalFilesystem(torrentFiles, dataDir.toString)
+      val fs = new LocalFilesystem(torrentFiles, path, blockSize)
+      val fs2 = new LocalFilesystem(torrentFiles, dataDir.toString, blockSize)
 
-      (fs.readPiece(0, 0, torrentFiles.pieceLength(0) - 2), fs.readPiece(0, torrentFiles.pieceLength(0) - 2, 2)) match {
-        case (Success(Some(d1)), Success(Some(d2))) =>
-          fs2.writePiece(0, 0, d1) shouldBe Success(true)
-          new File(dataDir, s".0.0.${d1.length}.blk").exists() shouldBe true
-          fs2.mergeBlocks(0) shouldEqual Right(List(PieceBlock(0, torrentFiles.pieceLength(0) - 2, 2)))
+      fs.readPiece(0, 0, 4) match {
+        case Success(Some(d)) =>
+          fs2.writePiece(0, 0, d.take(1)) shouldBe Success(true)
+          fs2.writePiece(0, 1, d.take(2).drop(1)) shouldBe Success(true)
+          fs2.writePiece(0, 2, d.take(3).drop(2)) shouldBe Success(true)
+          fs2.writePiece(0, 3, Array((d(3) + 1).toByte)) shouldBe Success(true)
 
-          fs2.writePiece(0, d1.length, Array(-1, -1)) shouldBe Success(true)
-          //re-download whole piece
-          fs2.mergeBlocks(0) shouldEqual Right(List(PieceBlock(0, 0, torrentFiles.pieceLength(0))))
-          new File(dataDir, s".0.0.${d1.length}.blk").exists() shouldBe false
-          new File(dataDir, s".0.${d1.length}.2.blk").exists() shouldBe false
+          new File(dataDir, s".0.0.1.blk").exists() shouldBe true
+          new File(dataDir, s".0.1.1.blk").exists() shouldBe true
+          new File(dataDir, s".0.2.1.blk").exists() shouldBe true
+          new File(dataDir, s".0.3.1.blk").exists() shouldBe true
+
+          fs2.mergeBlocks(0) shouldEqual Right(List(
+            PieceBlock(0, 0, 0, blockSize),
+            PieceBlock(0, 1, 1, blockSize),
+            PieceBlock(0, 2, 2, blockSize),
+            PieceBlock(0, 3, 3, blockSize)
+          ))
+          new File(dataDir, s".0.0.1.blk").exists() shouldBe false
+          new File(dataDir, s".0.1.1.blk").exists() shouldBe false
+          new File(dataDir, s".0.2.1.blk").exists() shouldBe false
+          new File(dataDir, s".0.3.1.blk").exists() shouldBe false
           new File(dataDir, s".0.piece").exists() shouldBe false
+
         case _ => fail()
       }
     }
 
     "merge piece file" in {
       val path = "src/test/resources/filesystem/simple"
+      val blockSize = 1
       val torrentFiles = TorrentFiles.fromLocalFiles(path, pieceLength = 4)
-      val fs = new LocalFilesystem(torrentFiles, path)
-      val fs2 = new LocalFilesystem(torrentFiles, dataDir.toString)
+      val fs = new LocalFilesystem(torrentFiles, path, blockSize)
+      val fs2 = new LocalFilesystem(torrentFiles, dataDir.toString, blockSize)
 
-      (fs.readPiece(0, 0, torrentFiles.pieceLength(0) - 2), fs.readPiece(0, torrentFiles.pieceLength(0) - 2, 2)) match {
-        case (Success(Some(d1)), Success(Some(d2))) =>
-          fs2.writePiece(0, 0, d1) shouldBe Success(true)
-          new File(dataDir, s".0.0.${d1.length}.blk").exists() shouldBe true
-          fs2.mergeBlocks(0) shouldEqual Right(List(PieceBlock(0, torrentFiles.pieceLength(0) - 2, 2)))
+      fs.readPiece(0, 0, 4) match {
+        case Success(Some(d)) =>
+          fs2.writePiece(0, 0, d.take(1)) shouldBe Success(true)
+          fs2.writePiece(0, 1, d.take(2).drop(1)) shouldBe Success(true)
+          fs2.writePiece(0, 2, d.take(3).drop(2)) shouldBe Success(true)
+          fs2.writePiece(0, 3, d.take(4).drop(3)) shouldBe Success(true)
 
-          fs2.writePiece(0, d1.length, d2) shouldBe Success(true)
-          new File(dataDir, s".0.${d1.length}.2.blk").exists() shouldBe true
-          fs2.mergeBlocks(0) shouldEqual Left(torrentFiles.pieces.head)
+          new File(dataDir, s".0.0.1.blk").exists() shouldBe true
+          new File(dataDir, s".0.1.1.blk").exists() shouldBe true
+          new File(dataDir, s".0.2.1.blk").exists() shouldBe true
+          new File(dataDir, s".0.3.1.blk").exists() shouldBe true
 
-          new File(dataDir, s".0.0.${d1.length}.blk").exists() shouldBe false
-          new File(dataDir, s".0.${d1.length}.2.blk").exists() shouldBe false
+          fs2.mergeBlocks(0)
           new File(dataDir, s".0.piece").exists() shouldBe true
 
           fs2.mergePieces()
           new File(dataDir, s".0.piece").exists() shouldBe false
 
           //校验各个分散文件中的数据hash
-          Util.sha1(torrentFiles.pieces(0).locs.foldLeft(Array.empty[Byte]) { (arr, loc) =>
+          Util.sha1(torrentFiles.pieces.head.locs.foldLeft(Array.empty[Byte]) { (arr, loc) =>
             // 要么在 xx.st里
             val f = torrentFiles.files(loc.fileIndex)
             if (new File(dataDir, s"${f.path}.st").exists()) {
@@ -174,7 +203,7 @@ class LocalFilesystemSpec extends WordSpec with Matchers with BeforeAndAfter {
             } else {
               fail(f.path + " not found")
             }
-          }) shouldEqual torrentFiles.pieces(0).hash
+          }) shouldEqual torrentFiles.pieces.head.hash
 
         case _ => fail()
       }
@@ -185,13 +214,14 @@ class LocalFilesystemSpec extends WordSpec with Matchers with BeforeAndAfter {
 
     "resume from complete blk files" in { // .blk => .piece => .st => finial file
       val path = "src/test/resources/filesystem/simple"
+      val blockSize = 1
       val torrentFiles = TorrentFiles.fromLocalFiles(path, pieceLength = 4)
-      val fs = new LocalFilesystem(torrentFiles, path)
-      val fs2 = new LocalFilesystem(torrentFiles, dataDir.toString)
+      val fs = new LocalFilesystem(torrentFiles, path, blockSize)
+      val fs2 = new LocalFilesystem(torrentFiles, dataDir.toString, blockSize)
 
       torrentFiles.pieces foreach { piece =>
         fs.readPiece(piece.idx, 0, piece.length) match {
-          case Success(Some(d)) => fs2.writePiece(piece.idx, 0, d) shouldEqual Success(true)
+          case Success(Some(d)) => d.zipWithIndex.foreach(b => fs2.writePiece(piece.idx, b._2, Array(b._1)) shouldEqual Success(true))
           case _                => fail()
         }
       }
@@ -199,9 +229,8 @@ class LocalFilesystemSpec extends WordSpec with Matchers with BeforeAndAfter {
       val ret = fs2.resume()
       ret.size shouldEqual torrentFiles.pieces.size
       ret.foreach { p =>
-        p._2.size shouldEqual 1
         val piece = torrentFiles.pieces(p._1)
-        p._2.head shouldEqual PieceBlock(piece.idx, 0, piece.length)
+        p._2 shouldEqual piece.blocks(blockSize).toSet
       }
     }
   }

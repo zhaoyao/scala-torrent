@@ -25,7 +25,7 @@ class TorrentManager(torrentStore: ActorRef) extends Actor with ActorLogging {
   val torrentActors = scala.collection.mutable.HashMap[String, ActorRef]()
 
   def createTorrentClient(torrent: Torrent): ActorRef = {
-    val client = context.actorOf(Props(new TorrentSession(torrent, "file:///tmp")))
+    val client = context.actorOf(TorrentSession.props(torrent, "file:///tmp"))
     context.watch(client)
     client
   }
