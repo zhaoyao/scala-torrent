@@ -27,6 +27,7 @@ object TorrentSession {
   private case object CheckRequest
 
   //  private case object DumpPeers
+  private case object DumpStats
 
   val RequestTimeout = 10.seconds
 
@@ -95,7 +96,7 @@ class TorrentSession(metainfo: Torrent,
     logger.info(s"Starting TorrentSession[${metainfo.infoHash}], pieces: ${metainfo.files.pieces.size}, pieceLength: ${metainfo.metainfo.info.pieceLength}")
     resume()
 
-    //    context.system.scheduler.schedule(10.seconds, 10.seconds, self, DumpPeers)
+    context.system.scheduler.schedule(10.seconds, 10.seconds, self, DumpStats)
     context.system.scheduler.schedule(10.seconds, 10.seconds, self, CheckRequest)
   }
 
@@ -110,8 +111,9 @@ class TorrentSession(metainfo: Torrent,
           peers.retain(_._2 + RequestTimeout.toMillis < System.currentTimeMillis())
       }
 
-    //    case DumpPeers =>
-    //      logger.info(s"Session saw peers(${peerStates.size}): ${peerStates.keys.toList.sortBy(_.ip)}")
+    case DumpStats =>
+      logger.info(s"Peers: ${peerStates.size}")
+      checkProgress()
   }
 
   def cancelBlock(f: (PieceBlock => Boolean)) = {
@@ -381,7 +383,7 @@ class TorrentSession(metainfo: Torrent,
   }
 
   override def onPeerRemoved(peer: Peer): Unit = {
-    logger.info("Removing peer: {}", peer)
+    logger.debug("Removing peer: {}", peer)
     peerStates -= peer
     inflightBlocks.values.foreach(_.retain(_._1 != peer))
     inflightBlocks.retain((_, peers) => peers.nonEmpty)

@@ -172,6 +172,9 @@ class LocalFilesystem(val files: TorrentFiles,
             } else {
               f.delete()
             }
+
+          case file =>
+            logger.info(s"Ignore unknown file $file")
         }
       }
 

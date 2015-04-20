@@ -8,7 +8,7 @@ import scala.concurrent.Future
 
 object Announcer {
 
-  case class Announce(uploaded: Int, downloaded: Int, left: Int, event: String)
+  case class Announce(uploaded: Long, downloaded: Long, left: Long, event: String)
 
   def props(peerId: String,
             port: Int,

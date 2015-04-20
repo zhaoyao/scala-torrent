@@ -18,18 +18,18 @@ sealed trait MultitrackerStrategy {
   def announce(infoHash: String,
                peerId: String,
                port: Int,
-               uploaded: Int,
-               downloaded: Int,
-               left: Int,
+               uploaded: Long,
+               downloaded: Long,
+               left: Long,
                event: String = ""): Future[TrackerResponse]
 
   def doAnnounce(tracker: Uri,
                  infoHash: String,
                  peerId: String,
                  port: Int,
-                 uploaded: Int,
-                 downloaded: Int,
-                 left: Int,
+                 uploaded: Long,
+                 downloaded: Long,
+                 left: Long,
                  event: String): Future[TrackerResponse] = {
     tracker match {
       case u @ (Uri("http", _, _, _, _) | Uri("https", _, _, _, _)) =>
@@ -37,7 +37,7 @@ sealed trait MultitrackerStrategy {
 
       case u @ Uri("udp", _, _, _, _) =>
         //todo udp tracker announcement
-        Future.failed(new NotImplementedError())
+        Future.failed(new NotImplementedError("udp tracker not implemented"))
     }
   }
 
@@ -45,9 +45,9 @@ sealed trait MultitrackerStrategy {
                    infoHash: String,
                    peerId: String,
                    port: Int,
-                   uploaded: Int,
-                   downloaded: Int,
-                   left: Int,
+                   uploaded: Long,
+                   downloaded: Long,
+                   left: Long,
                    event: String = ""): Future[TrackerResponse] = {
     val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
 
@@ -84,9 +84,9 @@ class SingleTracker(val system: ActorSystem, onlyTracker: String) extends Multit
   override def announce(infoHash: String,
                         peerId: String,
                         port: Int,
-                        uploaded: Int,
-                        downloaded: Int,
-                        left: Int,
+                        uploaded: Long,
+                        downloaded: Long,
+                        left: Long,
                         event: String): Future[TrackerResponse] = {
     doAnnounce(Uri(onlyTracker), infoHash, peerId, port, uploaded, downloaded, left, event)
   }
@@ -100,9 +100,9 @@ class TryAll(val system: ActorSystem, trackers: List[String]) extends Multitrack
   override def announce(infoHash: String,
                         peerId: String,
                         port: Int,
-                        uploaded: Int,
-                        downloaded: Int,
-                        left: Int,
+                        uploaded: Long,
+                        downloaded: Long,
+                        left: Long,
                         event: String): Future[TrackerResponse] = {
 
     Future.traverse(trackers) { tracker =>
@@ -149,9 +149,9 @@ class UseBest(val system: ActorSystem, trackers: List[String]) extends Multitrac
   override def announce(infoHash: String,
                         peerId: String,
                         port: Int,
-                        uploaded: Int,
-                        downloaded: Int,
-                        left: Int,
+                        uploaded: Long,
+                        downloaded: Long,
+                        left: Long,
                         event: String): Future[TrackerResponse] = {
     // 尝试每一个tracker，成功后调整下次announce的顺序(成功的tracker放到队列的前端，下次优先使用)
 
@@ -162,9 +162,9 @@ class UseBest(val system: ActorSystem, trackers: List[String]) extends Multitrac
                     infoHash: String,
                     peerId: String,
                     port: Int,
-                    uploaded: Int,
-                    downloaded: Int,
-                    left: Int,
+                    uploaded: Long,
+                    downloaded: Long,
+                    left: Long,
                     event: String): Future[(TrackerResponse, String)] = {
       doAnnounce(Uri(trackers.head), infoHash, peerId, port, uploaded, downloaded, left, event)
         .map(r => (r, trackers.head))
@@ -183,7 +183,7 @@ class UseBest(val system: ActorSystem, trackers: List[String]) extends Multitrac
     ret.onSuccess {
       case (r, successTracker) =>
         synchronized {
-          this.current = successTracker :: (current.filterNot(t => t == successTracker))
+          this.current = successTracker :: current.filterNot(t => t == successTracker)
         }
     }
 
@@ -194,6 +194,6 @@ class UseBest(val system: ActorSystem, trackers: List[String]) extends Multitrac
 
 // d['announce-list'] = [ [ tracker1, tracker2 ], [backup1] ]
 class PreferFirstTier(val system: ActorSystem, firstTiers: List[String], backups: List[List[String]]) extends MultitrackerStrategy {
-  override def announce(infoHash: String, peerId: String, port: Int, uploaded: Int, downloaded: Int, left: Int, event: String): Future[TrackerResponse] = ???
+  override def announce(infoHash: String, peerId: String, port: Int, uploaded: Long, downloaded: Long, left: Long, event: String): Future[TrackerResponse] = ???
 }
 

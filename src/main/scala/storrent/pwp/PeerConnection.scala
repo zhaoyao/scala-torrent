@@ -5,9 +5,11 @@ import java.net.InetSocketAddress
 import akka.actor._
 import akka.io.Tcp._
 import akka.io.{ IO, Tcp }
+import akka.pattern._
 import akka.util.ByteString
 import storrent.extension.{ AdditionalMessageDecoding, HandshakeEnabled }
 import storrent.pwp.Message._
+import storrent.pwp.PeerConnection.Start
 import storrent.{ ActorStack, Peer, Slf4jLogging }
 
 import scala.annotation.tailrec
@@ -17,23 +19,36 @@ import scala.util.{ Failure, Success, Try }
 
 object PeerConnection {
 
-  def props(infoHash: String, selfPeerId: String, target: Peer, session: ActorRef, inbound: Boolean = false) =
-    Props(classOf[PeerConnection], infoHash, selfPeerId, target, session, inbound, Set.empty)
+  def props(infoHash: String, peerId: String, endpoint: Peer, session: ActorRef, inbound: Boolean) =
+    Props(classOf[PeerConnection], infoHash, peerId, endpoint, session, inbound, Set.empty)
+
+  case class Start(tcpConn: Option[ActorRef])
+
+  val ConnectTimeout = 2.minutes
 
 }
 
+/**
+ * 处理peer连接的actor。
+ * 分为两种模式:
+ *  1. 被动连接进来的peer (inbound)
+ *  2. 主动连接出去的peer (outbound, 从tracker等获取到得)
+ *
+ *  被动连接进来的peer，需要在外部做好
+ */
 class PeerConnection(infoHash: String,
-                     selfPeerId: String,
-                     targetPeer: Peer,
+                     peerId: String,
+                     endpoint: Peer,
                      session: ActorRef,
                      inbound: Boolean,
                      handshakeExtensions: Set[HandshakeEnabled with AdditionalMessageDecoding] = Set.empty)
     extends ActorStack with Slf4jLogging with Stash {
 
   import context.dispatcher
+  import PeerConnection._
 
   var decoder: MessageDecoder = _
-  val handshake: Handshake = Handshake(infoHash, selfPeerId)
+  val handshake: Handshake = Handshake(infoHash, peerId)
 
   var choked = false
 
@@ -41,45 +56,65 @@ class PeerConnection(infoHash: String,
 
   val have = mutable.Set[Int]()
 
-  var tcpConn: Option[ActorRef] = None
-
-  override def preStart(): Unit = {
-    if (!inbound) {
-      logger.debug(s"Creating peer connection for ih: $infoHash to $targetPeer")
-      IO(Tcp)(context.system) ! Connect(new InetSocketAddress(targetPeer.ip, targetPeer.port))
-    } else {
-      logger.debug(s"Accepted peer connection for ih: $infoHash from $targetPeer")
-    }
-  }
+  var tcpConn: ActorRef = null
 
   override def postStop(): Unit = {
-    for (c <- tcpConn) {
-      c ! Close
+    if (tcpConn != null) {
+      tcpConn ! Close
     }
   }
 
-  override def wrappedReceive: Receive = connecting
+  override def wrappedReceive: Receive = waitToStart
 
-  object InterestedAck extends Event
+  def handlePeerClose: Receive = {
+    case PeerClosed =>
+      logger.info(s"Peer[$endpoint] connection closed")
+      context stop self
+  }
 
-  def connecting: Receive = {
-    case c @ Connected(remote, local) =>
-      logger.info("Connection to peer {} established", targetPeer)
-      val conn = sender()
-      tcpConn = Some(conn)
+  def waitToStart: Receive = {
+    case Start(conn) =>
+      val requestor = sender()
+      conn match {
+        case Some(c) =>
+          attachTcpConn(c)
+          context become handshake(requestor)
 
-      conn ! Register(self)
-      conn ! Write(ByteString(handshake.encode))
-    //TODO detect handshake timeout
+        case None =>
+          logger.debug(s"Creating connection to $endpoint")
+          (IO(Tcp)(context.system) ? Connect(new InetSocketAddress(endpoint.ip, endpoint.port)))(ConnectTimeout)
+            .mapTo[Event]
+            .onComplete {
+              case Success(c: Connected) =>
+                val tcpConn = sender()
+                attachTcpConn(tcpConn)
+                context become handshake(requestor)
 
+              case Success(CommandFailed(_: Connect)) =>
+                requestor ! false
+                context stop self
+
+              case Failure(e) =>
+                requestor ! akka.actor.Status.Failure(e)
+                context stop self
+
+              case x => unhandled(x)
+            }
+      }
+  }
+
+  def handshake(requestor: ActorRef): Receive = handlePeerClose orElse {
     case Received(data) =>
       Try(Handshake.parse(data)) match {
         case Success((hs: Handshake, remaining: ByteString)) =>
-          if ((targetPeer.id != "" && hs.peerId != targetPeer.id) || hs.protocol != handshake.protocol) {
-            logger.info("Invalid handshake: {}. peer={} ih={}", hs, targetPeer, infoHash)
+          if ((endpoint.id != "" && hs.peerId != endpoint.id) || hs.protocol != handshake.protocol) {
+            logger.info("Invalid handshake: {}. peer={} ih={}", hs, endpoint, infoHash)
+            requestor ! false
             context stop self
 
           } else {
+            logger.info(s"Connection ${if (inbound) "from" else "to"} peer $endpoint established")
+
             decoder = new MessageDecoder(handshakeExtensions
               .filter(_.isEnabled(hs)).map(_.asInstanceOf[AdditionalMessageDecoding]))
 
@@ -87,29 +122,20 @@ class PeerConnection(infoHash: String,
 
             context become connected(sender())
             unstashAll()
-            context.system.scheduler.schedule(5.seconds, 60.seconds, self, Keepalive)
-
+            context.system.scheduler.schedule(5.minutes, 5.minutes, self, Keepalive)
+            requestor ! true
           }
 
         case Failure(e) =>
           logger.info("Handshake parsing failed: {}", e.getMessage)
           context stop self
+          requestor ! false
       }
 
-    case CommandFailed(_: Connect) =>
-      //TODO retry
-      //      logger.info(s"Peer[$targetPeer] Unable to connect to peer")
-      context stop self
-
-    case PeerClosed =>
-      logger.info(s"Peer[$targetPeer] connection closed")
-      context stop self
-
     case _ => stash()
-
   }
 
-  def connected(conn: ActorRef): Receive = {
+  def connected(conn: ActorRef): Receive = handlePeerClose orElse {
     case m: Message =>
       //      logger.debug(s"Forwarding[${targetPeer.ip}}] pwp msg: ${m}")
       m match {
@@ -140,35 +166,36 @@ class PeerConnection(infoHash: String,
     case CommandFailed(_: Write) =>
       // log handshake failed
       context stop self
-
-    case PeerClosed =>
-      logger.info(s"Peer[$targetPeer] connection closed")
-      context stop self
   }
 
   def handleInboundData(data: ByteString): Unit = {
     decodeMessage(data).foreach {
       case Choke =>
         this.choked = true
-        session ! Tuple2(targetPeer, Choke)
+        session ! Tuple2(endpoint, Choke)
 
       case Unchoke =>
         this.choked = false
-        session ! Tuple2(targetPeer, Unchoke)
+        session ! Tuple2(endpoint, Unchoke)
 
       case Interested =>
         this.interested = true
-        session ! Tuple2(targetPeer, Interested)
+        session ! Tuple2(endpoint, Interested)
 
       case Uninterested =>
         this.interested = false
-        session ! Tuple2(targetPeer, Uninterested)
+        session ! Tuple2(endpoint, Uninterested)
 
       case msg =>
         logger.trace(s"Pwp message => $msg")
         // should we let torrent client handle peer timeout ?
-        session ! Tuple2(targetPeer, msg)
+        session ! Tuple2(endpoint, msg)
     }
+  }
+
+  def attachTcpConn(tcpConn: ActorRef) = {
+    tcpConn ! Register(self)
+    tcpConn ! Write(ByteString(handshake.encode))
   }
 
   @tailrec

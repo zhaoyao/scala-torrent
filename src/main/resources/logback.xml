@@ -8,7 +8,7 @@
         </encoder>
     </appender>
 
-    <logger name="storrent" level="DEBUG"/>
+    <!--<logger name="storrent" level="DEBUG"/>-->
 
     <root level="INFO">
         <appender-ref ref="CONSOLE"/>
