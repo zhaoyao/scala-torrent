@@ -2,6 +2,7 @@ package storrent.pwp
 
 import java.net.InetSocketAddress
 
+import akka.actor.SupervisorStrategy._
 import akka.actor._
 import akka.io.Tcp._
 import akka.pattern._
@@ -44,16 +45,28 @@ class PwpPeer(torrent: Torrent,
   val id = PeerId()
 
   val announceTimeout = Timeout(5.minutes)
-  val announcer = context.actorOf(Announcer.props(id, port, torrent, self))
+  var announcer: ActorRef = null
 
   var downloaded: Long = 0
   var uploaded: Long = 0
   var left: Long = torrent.metainfo.info.length
 
+  var actualPort: Int = port
+
   IO(Tcp)(context.system) ! Bind(self, new InetSocketAddress("localhost", port))
 
   //TODO @stats(downloaded, uploaded) 如果这个采集器放在这里，那么就不够抽象了
   // 创建一个 TorrentStats 接口，在 TorrentHandler/PieceHandler的相关方法中传入，暴露修改接口
+
+  override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy(maxNrOfRetries = 3, loggingEnabled = true)({
+    case _: ActorInitializationException ⇒ Stop
+    case _: ActorKilledException         ⇒ Stop
+    case _: DeathPactException           ⇒ Stop
+    case e: Exception ⇒ {
+      e.printStackTrace()
+      Restart
+    }
+  })
 
   def announce(uploaded: Long, downloaded: Long, left: Long, event: String = ""): Future[List[Peer]] = {
     val resp = (announcer ? Announce(uploaded, downloaded, left, event))(announceTimeout).mapTo[TrackerResponse]
@@ -81,7 +94,11 @@ class PwpPeer(torrent: Torrent,
 
   def creatingTcpServer: Receive = {
     case b @ Bound(_) =>
-      logger.info(s"${torrent.infoHash} listen on $port success")
+      actualPort = b.localAddress.getPort
+      logger.info(s"${torrent.infoHash} listen on $actualPort success")
+
+      announcer = context.actorOf(Announcer.props(id, actualPort, torrent, self))
+
       context become ready
       context.system.scheduler.scheduleOnce(0.seconds, self, DoAnnounce)
 
@@ -117,7 +134,7 @@ class PwpPeer(torrent: Torrent,
     case DoAnnounce =>
       announce(uploaded, downloaded, left, "") onComplete {
         case Success(peers) =>
-          logger.info(s"Got ${peers.size} peer(s) from tracker")
+          logger.info(s"Got ${peers.size} peer(s) from tracker, ${peers.count(!peerConns.contains(_))} new peers")
           //TODO send peers to TorrentSession, let him judge
           peers.foreach { p =>
             self ! AddPeer(p, None)
@@ -129,16 +146,7 @@ class PwpPeer(torrent: Torrent,
 
   def peerRegistration: Receive = {
     case AddPeer(p, tcpConn) =>
-      tcpConn match {
-        case Some(c) =>
-          if (peerConns.contains(p)) {
-            logger.debug(s"Stopping old peer conn from $p")
-            context stop peerConns(p)
-          }
-          peerConns(p) = createPeer(p, tcpConn)
-        case None =>
-          peerConns(p) = createPeer(p, tcpConn)
-      }
+      peerConns.getOrElseUpdate(p, createPeer(p, tcpConn))
   }
 
   def peerTerminated: Receive = {
@@ -184,7 +192,7 @@ class PwpPeer(torrent: Torrent,
   }
 
   def createPeer(p: Peer, tcpConn: Option[ActorRef]) = {
-    val c = context.actorOf(PeerConnection.props(torrent.infoHash, id, p, session, tcpConn.isDefined), s"PeerConn-${p.hashCode()}")
+    val c = context.actorOf(PeerConnection.props(torrent.infoHash, id, p, session, tcpConn.isDefined))
     context.watch(c)
 
     (c ? Start(tcpConn))(Timeout(PeerConnection.ConnectTimeout)).mapTo[Boolean].map({

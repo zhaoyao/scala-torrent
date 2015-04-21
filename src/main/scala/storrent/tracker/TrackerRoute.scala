@@ -34,12 +34,7 @@ trait TrackerRoute {
 
     respondWithMediaType(MediaType.custom("application/x-bittorrent")) {
 
-      /*  path("announce") {
-          parameterMap { p =>
-            println(p)
-            complete("")
-          }
-        } ~*/ path("announce") {
+      path("announce") {
         parameters(
           'info_hash.as[String],
           'peer_id.as[String],
@@ -51,29 +46,34 @@ trait TrackerRoute {
           'event.as[Option[String]],
           'compact.as[Option[Int]]
         ) { (infoHash, peerId, ip, port, uploaded, downloaded, left, event, compact) =>
-            //TODO guess ip address
-            //          val (pid, peerAddr) = if (port.get == 7777) {
-            //            ("abcdefg", ("127.0.0.1", 7777))
-            //          } else {
-            //            (peerId, ip.flatMap(ip => port.map(port => (ip, port))))
-            //          }
 
-            val infoHashHex = Util.encodeHex(infoHash.getBytes)
-            val update = PeerUpdate(infoHashHex, Peer(peerId, "", port.get), event, uploaded, downloaded, left)
+            clientIP { httpClientIp =>
+              //TODO guess ip address
+              //          val (pid, peerAddr) = if (port.get == 7777) {
+              //            ("abcdefg", ("127.0.0.1", 7777))
+              //          } else {
+              //            (peerId, ip.flatMap(ip => port.map(port => (ip, port))))
+              //          }
 
-            val compactPeer = !compact.isDefined || compact.get == 0
+              val infoHashHex = Util.encodeHex(infoHash.getBytes)
+              val update = PeerUpdate(infoHashHex,
+                Peer(peerId, ip.orElse(httpClientIp.toOption.map(_.getHostAddress)).getOrElse(""), port.get),
+                event, uploaded, downloaded, left)
 
-            val result = (torrentManger ? update).mapTo[List[Peer]]
+              val compactPeer = !compact.isDefined || compact.get == 0
 
-            implicit val successFormat = TrackerResponse.BencodingProtocol.successFormat(compactPeer)
-            implicit val errorFormat = TrackerResponse.BencodingProtocol.errorFormat
+              val result = (torrentManger ? update).mapTo[List[Peer]]
 
-            //TODO spray-bencoding-support
-            onComplete(result) {
-              case Success(peers) =>
-                complete(TrackerResponse.Success(3600, peers, None, None).toBencoding.toString)
-              case Failure(e) =>
-                complete(TrackerResponse.Error(e.getMessage).toBencoding.toString)
+              implicit val successFormat = TrackerResponse.BencodingProtocol.successFormat(compactPeer)
+              implicit val errorFormat = TrackerResponse.BencodingProtocol.errorFormat
+
+              //TODO spray-bencoding-support
+              onComplete(result) {
+                case Success(peers) =>
+                  complete(TrackerResponse.Success(5, peers, None, None).toBencoding.toString())
+                case Failure(e) =>
+                  complete(TrackerResponse.Error(e.getMessage).toBencoding.toString())
+              }
             }
           }
       }

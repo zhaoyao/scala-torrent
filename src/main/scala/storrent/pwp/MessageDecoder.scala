@@ -107,42 +107,44 @@ class MessageDecoder(extensions: Set[AdditionalMessageDecoding] = Set.empty,
           if (msgLength > 1) {
             payloadBuffer = ByteBuffer.allocate(this.msgLength - 1)
           }
-          return decode(data.drop(4))
+           decode(data.drop(4))
         } else {
-          return (None, ByteString.empty)
+           (None, ByteString.empty)
         }
 
       case State_WANT_MSG_ID =>
         if (this.msgLength == 0) {
           //keepalive
           reset()
-          return (Some(Keepalive), data)
+           (Some(Keepalive), data)
 
         } else {
           if (data.length >= 1) {
-            this.msgId = data(0)
+            this.msgId = data.head
             state = State_WANT_PAYLOAD
-            return decode(data.drop(1))
+             decode(data.drop(1))
           } else {
-            return (None, ByteString.empty)
+             (None, ByteString.empty)
           }
         }
 
       case State_WANT_PAYLOAD =>
         if (this.msgLength == 1) {
           // no payload
-          return (decodeMessage(), data)
+           (decodeMessage(), data)
 
         } else {
+          require(payloadBuffer != null, s"payloadBuffer is null while msgLength=$msgLength")
+
           val payloadNeed = msgLength - 1 - payloadBuffer.position()
           val payloadHave = Math.min(data.length, payloadNeed)
 
           payloadBuffer.put(data.slice(0, payloadHave).toArray)
           if (payloadNeed == payloadHave) {
             // complete message decoding
-            return (decodeMessage(), data.drop(payloadHave))
+            (decodeMessage(), data.drop(payloadHave))
           } else {
-            return (None, ByteString.empty)
+             (None, ByteString.empty)
           }
 
         }

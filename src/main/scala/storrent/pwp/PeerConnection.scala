@@ -57,6 +57,7 @@ class PeerConnection(infoHash: String,
   val have = mutable.Set[Int]()
 
   var tcpConn: ActorRef = null
+  var requestor: ActorRef = null
 
   override def postStop(): Unit = {
     if (tcpConn != null) {
@@ -68,13 +69,13 @@ class PeerConnection(infoHash: String,
 
   def handlePeerClose: Receive = {
     case PeerClosed =>
-      logger.info(s"Peer[$endpoint] connection closed")
+      logger.debug(s"Peer[$endpoint] connection closed")
       context stop self
   }
 
   def waitToStart: Receive = {
     case Start(conn) =>
-      val requestor = sender()
+      requestor = sender()
       conn match {
         case Some(c) =>
           attachTcpConn(c)
@@ -82,25 +83,19 @@ class PeerConnection(infoHash: String,
 
         case None =>
           logger.debug(s"Creating connection to $endpoint")
-          (IO(Tcp)(context.system) ? Connect(new InetSocketAddress(endpoint.ip, endpoint.port)))(ConnectTimeout)
-            .mapTo[Event]
-            .onComplete {
-              case Success(c: Connected) =>
-                val tcpConn = sender()
-                attachTcpConn(tcpConn)
-                context become handshake(requestor)
+          IO(Tcp)(context.system) ! Connect(new InetSocketAddress(endpoint.ip, endpoint.port))
 
-              case Success(CommandFailed(_: Connect)) =>
-                requestor ! false
-                context stop self
-
-              case Failure(e) =>
-                requestor ! akka.actor.Status.Failure(e)
-                context stop self
-
-              case x => unhandled(x)
-            }
       }
+
+    case _: Connected =>
+      val tcpConn = sender()
+      attachTcpConn(tcpConn)
+      context become handshake(requestor)
+
+    case CommandFailed(_: Connect) =>
+      requestor ! false
+      context stop self
+
   }
 
   def handshake(requestor: ActorRef): Receive = handlePeerClose orElse {
@@ -113,7 +108,7 @@ class PeerConnection(infoHash: String,
             context stop self
 
           } else {
-            logger.info(s"Connection ${if (inbound) "from" else "to"} peer $endpoint established")
+            logger.debug(s"Connection ${if (inbound) "from" else "to"} peer $endpoint established")
 
             decoder = new MessageDecoder(handshakeExtensions
               .filter(_.isEnabled(hs)).map(_.asInstanceOf[AdditionalMessageDecoding]))
@@ -122,7 +117,7 @@ class PeerConnection(infoHash: String,
 
             context become connected(sender())
             unstashAll()
-            context.system.scheduler.schedule(5.minutes, 5.minutes, self, Keepalive)
+            context.system.scheduler.schedule(5.seconds, 5.seconds, self, Keepalive)
             requestor ! true
           }
 

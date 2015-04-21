@@ -63,7 +63,12 @@ class MessageDecodeSpec extends WordSpec with Matchers with MessageSpecBase {
         case (Some(m: Bitfield), d: ByteString) =>
           m.pieceSet shouldEqual Set(0, 2, 4, 6, 8)
           d.length shouldEqual 0
+      }
 
+      inside(new MessageDecoder().decode(new Bitfield((0 until 1454).toSet).encode)) {
+        case (Some(m: Bitfield), d: ByteString) =>
+          m.pieceSet shouldEqual (0 until 1454).toSet
+          d.length shouldEqual 0
       }
     }
 

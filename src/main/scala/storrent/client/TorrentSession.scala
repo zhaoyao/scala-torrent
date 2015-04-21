@@ -66,7 +66,7 @@ class TorrentSession(metainfo: Torrent,
   val files = TorrentFiles.fromMetainfo(metainfo)
   val store = TorrentStore(metainfo, Paths.get(storeUri, metainfo.infoHash).toString, blockSize)
 
-  val hostPeer = context.actorOf(PwpPeer.props(metainfo, 7778, self))
+  val hostPeer = context.actorOf(PwpPeer.props(metainfo, 0, self))
 
   var peerStates = mutable.Map[Peer, PeerState]().withDefault(p => PeerState())
 
@@ -77,6 +77,8 @@ class TorrentSession(metainfo: Torrent,
 
   val totalPieces = metainfo.metainfo.info.pieces.length
   val bootstrappingPieceCount = Math.min(DefaultBootstrappingPieceCount, totalPieces)
+
+  val interestedMarks = mutable.Set[Peer]()
 
   //1. which piece/block is requesting from which peer
 
@@ -106,10 +108,21 @@ class TorrentSession(metainfo: Torrent,
       handleMessage(peer, peerStates(peer), msg)
 
     case CheckRequest =>
-      inflightBlocks.foreach {
-        case (blk, peers) =>
-          peers.retain(_._2 + RequestTimeout.toMillis < System.currentTimeMillis())
-      }
+//      val current = System.currentTimeMillis()
+//
+//      inflightBlocks.foreach {
+//        case (blk, requestPairs) =>
+////          peers.retain(_._2 + RequestTimeout.toMillis < System.currentTimeMillis())
+//          def requestTimeout = { pair: (Peer, Long) =>
+//            val (_, time) = pair
+//            time + RequestTimeout.toMillis >= current
+//          }
+//
+//          requestPairs.filter(requestTimeout).foreach { p =>
+//            activePieces.
+//
+//          }
+//      }
 
     case DumpStats =>
       logger.info(s"Peers: ${peerStates.size}")
@@ -184,6 +197,7 @@ class TorrentSession(metainfo: Torrent,
 
         case Failure(e) =>
           //read failure
+          logger.info("read block failed", e)
           hostPeer ! ((peer, Kill))
       }
 
@@ -194,9 +208,9 @@ class TorrentSession(metainfo: Torrent,
   }
 
   def ifInterested(peer: Peer, pieces: Set[Int]) = {
-    if ((missingBlocks.keySet & pieces).nonEmpty) {
-      logger.debug("Peer interested. {}", peer)
+    if ((activePieces.filterNot(_._2.isCompleted).keySet & pieces).nonEmpty && !interestedMarks.contains(peer)) {
       sendPeerMsg(peer, Interested)
+      interestedMarks += peer
     }
   }
 
@@ -283,7 +297,7 @@ class TorrentSession(metainfo: Torrent,
 
       val blockLength = metainfo.files.pieces(pieceIndex).blockLength(blockIndex, blockSize)
       sendPeerMsg(peer, Request(pieceIndex, blockIndex * blockSize, blockLength))
-      logger.debug(s"Requesting block => ${Request(pieceIndex, blockIndex * blockSize, blockLength)}")
+      logger.info(s"Requesting block => ${Request(pieceIndex, blockIndex * blockSize, blockLength)}")
     }
   }
 
@@ -292,7 +306,7 @@ class TorrentSession(metainfo: Torrent,
   private def bootstrappingPieces = {
     if (_bootstrappingPieces.isEmpty) {
 
-      if (peerStates.size < 10) {
+      if (peerStates.size <= 0) {
         //TODO 如果现有成功下载的block，直接选用，不等待更多peer连接
       } else {
 
@@ -324,17 +338,20 @@ class TorrentSession(metainfo: Torrent,
   }
 
   def chooseBlock(peer: Peer): Option[(Int, Int)] = {
-    val pendingPiece: Option[Int] = if (completedPieces.size <= bootstrappingPieceCount) {
+    val pendingPiece: Option[Int] = if (completedPieces.size < bootstrappingPieceCount) {
       //pick a piece randomly
-      new Random().shuffle(bootstrappingPieces).find(peerStates(peer).have).headOption
+      new Random().shuffle(
+        bootstrappingPieces.filterNot(completedPieces.contains)
+      ).find(peerStates(peer).have).headOption
     } else {
       peerStates
         .map(_._2).flatMap(_.have)
         .foldLeft(Map.empty[Int, Int].withDefault(_ => 0)) { (m, piece) =>
           m + (piece -> (m(piece) + 1))
         }
+        .filter(p => activePieces.contains(p._1))
         .toList.sortBy(-_._2).map(_._1)
-        .find(peerStates(peer).have.contains)
+        .find(peerStates(peer).have)
     }
     //Total blocks: 3194, missing: 3127, completed: 67, 2.10%
     // if completedPieces.size >= 4  select rarest pieces
@@ -365,7 +382,8 @@ class TorrentSession(metainfo: Torrent,
     completedPieces ++= pieces.filter(_.isCompleted).map(_.piece.idx)
 
     activePieces ++= pieces.filterNot(_.isCompleted).map(ap => (ap.piece.idx, ap)).toMap // 已下载过的
-    activePieces ++= (allPieces.map(_.idx) -- activePieces.keySet).map(p => (p, ActivePiece(metainfo.files.pieces(p), blockSize))) // 未下载过的
+    activePieces ++= (allPieces.map(_.idx) -- completedPieces -- activePieces.keySet)
+      .map(p => (p, ActivePiece(metainfo.files.pieces(p), blockSize))) // 未下载过的
 
     checkProgress()
   }
@@ -385,8 +403,7 @@ class TorrentSession(metainfo: Torrent,
   override def onPeerRemoved(peer: Peer): Unit = {
     logger.debug("Removing peer: {}", peer)
     peerStates -= peer
-    inflightBlocks.values.foreach(_.retain(_._1 != peer))
-    inflightBlocks.retain((_, peers) => peers.nonEmpty)
+    interestedMarks -= peer
 
     for (requests <- peerRequests.remove(peer)) {
       for (req <- requests) {

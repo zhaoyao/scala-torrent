@@ -12,7 +12,21 @@ trait Slf4jLogging extends ActorStack with StrictLogging {
 
   private[this] val myPath = self.path.toString
 
-  logger.info(s"Starting actor ${getClass.getName}")
+  @throws[Exception](classOf[Exception])
+  override def postStop(): Unit = logger.info("postStop")
+
+  @throws[Exception](classOf[Exception])
+  override def preStart(): Unit = logger.info("preStart")
+
+  @throws[Exception](classOf[Exception])
+  override def preRestart(reason: Throwable, message: Option[Any]): Unit = {
+    logger.info(s"preRestart: ${reason.getMessage} $message")
+  }
+
+  @throws[Exception](classOf[Exception])
+  override def postRestart(reason: Throwable): Unit = {
+    logger.info(s"preRestart: ${reason.getMessage}")
+  }
 
   override def receive: Receive = {
     case x =>

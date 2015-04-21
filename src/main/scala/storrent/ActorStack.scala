@@ -14,4 +14,5 @@ trait ActorStack extends Actor {
   override def receive: Actor.Receive = {
     case x => if (wrappedReceive.isDefinedAt(x)) wrappedReceive(x) else unhandled(x)
   }
+
 }

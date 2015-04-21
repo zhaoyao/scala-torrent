@@ -16,16 +16,15 @@ import scala.util.{ Failure, Success }
  */
 object Download {
 
-  def start(torrent: Torrent): Unit = {
+  def start(torrent: Torrent, storeDir: String): Unit = {
     val system = ActorSystem("storrent")
-    val session = system.actorOf(TorrentSession.props(torrent, "file:///Users/zhaoyao/storrent_download22"))
-
+    system.actorOf(TorrentSession.props(torrent, s"file://$storeDir"))
   }
 
   def main(args: Array[String]): Unit = {
     Torrent(Files.readAllBytes(Paths.get(args(0)))) match {
       case Success(torrent) =>
-        start(torrent)
+        start(torrent, args(1))
 
       case Failure(e) =>
         e.printStackTrace()

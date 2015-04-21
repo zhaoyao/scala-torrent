@@ -15,7 +15,7 @@ object TorrentFiles {
 
     def numBlocks(blockSize: Int): Int = if (length % blockSize == 0) length / blockSize else (length / blockSize) + 1
 
-    def blockLength(index: Int, blockSize: Int) = if (index == numBlocks(blockSize)) {
+    def blockLength(index: Int, blockSize: Int) = if (index + 1 == numBlocks(blockSize)) {
       //last block
       if (length > index * blockSize) {
         length - index * blockSize

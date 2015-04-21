@@ -23,11 +23,10 @@ object Stracker {
             system: ActorSystem = ActorSystem("stracker")): Unit = {
 
     val torrentManager = TorrentManager.start(system)
-    val webPort = Properties.envOrElse("PORT", "8080").toInt
 
     implicit val s = system
     new SimpleRoutingApp {}
-      .startServer("0.0.0.0", webPort)(new StrackerRoute(system, torrentManager.path).route)
+      .startServer("0.0.0.0", port)(new StrackerRoute(system, torrentManager.path).route)
 
   }
 

@@ -34,7 +34,7 @@ class TorrentStateActor(infoHash: String) extends Actor with ActorLogging {
 
   def selectPeers(): List[Peer] = {
     this.peers.values
-      .filter(s => s.state == "started" || s.state == "completed")
+      //      .filter(s => s.state == "started" || s.state == "completed")
       .take(20).map(_.peer).toList
   }
 
@@ -44,7 +44,7 @@ class TorrentStateActor(infoHash: String) extends Actor with ActorLogging {
         peers -= peer.id
         sender() ! Nil
       case _ =>
-        sender() ! selectPeers()
+        sender() ! selectPeers().filterNot(_ == peer)
         updatePeer(e, u)
     }
 

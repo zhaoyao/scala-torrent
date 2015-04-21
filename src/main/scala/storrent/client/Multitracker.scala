@@ -37,7 +37,7 @@ sealed trait MultitrackerStrategy {
 
       case u @ Uri("udp", _, _, _, _) =>
         //todo udp tracker announcement
-        Future.failed(new NotImplementedError("udp tracker not implemented"))
+        Future.failed(new NotImplementedError(s"udp tracker $tracker not implemented"))
     }
   }
 
@@ -58,6 +58,7 @@ sealed trait MultitrackerStrategy {
       ("downloaded", downloaded.toString),
       ("left", left.toString),
       ("event", event),
+      ("numwant", "50"),
       ("compact", "1")
     )
 
@@ -69,12 +70,16 @@ sealed trait MultitrackerStrategy {
     import sbencoding._
     import storrent.client.TrackerResponse.BencodingProtocol._
 
-    implicit def successFormat = TrackerResponse.BencodingProtocol.successFormat(true)
+    if (response.status.isFailure) {
+      TrackerResponse.Error(response.entity.asString)
+    } else {
+      implicit val successFormat = TrackerResponse.BencodingProtocol.successFormat(true)
 
-    val successOrError = response.entity.data.toByteArray.parseBencoding
-      .convertTo[Either[TrackerResponse.Success, TrackerResponse.Error]]
+      val successOrError = response.entity.data.toByteArray.parseBencoding
+        .convertTo[Either[TrackerResponse.Success, TrackerResponse.Error]]
 
-    successOrError.fold(identity, identity)
+      successOrError.fold(identity, identity)
+    }
   }
 
 }

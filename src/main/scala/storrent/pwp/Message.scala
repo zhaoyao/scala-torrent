@@ -103,7 +103,7 @@ object Message {
       val bitfield = Array.fill[Byte](payloadLength)(0)
       pieceSet.foreach { pieceIndex =>
         var pieceMark: Int = bitfield(pieceIndex / 8)
-        pieceMark |= (1 << (8 - pieceIndex % 8)) & 0xffffffff
+        pieceMark |= (1 << (7 - pieceIndex % 8))
         bitfield(pieceIndex / 8) = pieceMark.toByte
       }
       b.put(bitfield)
