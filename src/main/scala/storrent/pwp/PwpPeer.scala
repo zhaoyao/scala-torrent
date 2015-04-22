@@ -117,28 +117,24 @@ class PwpPeer(torrent: Torrent,
 
     case StartAnnounce =>
       announce(uploaded, downloaded, left, "") onComplete {
-        case Success(TrackerResponse.Success(_, peers, _, _)) =>
-          logger.info(s"Got ${peers.size} peer(s) from tracker, ${peers.count(!peerConns.contains(_))} new peers")
-          //TODO send peers to TorrentSession, let him judge
-          peers.foreach { p =>
-            self ! AddPeer(p, None)
-          }
+        case Success(TrackerResponse.Success(interval, peers, _, _)) =>
+          addPeers(peers)
+          context.system.scheduler.schedule(interval.seconds, interval.seconds, self, DoAnnounce)
 
         case Success(TrackerResponse.Error(reason)) =>
           logger.info(s"Tracker return error: $reason")
+          context.system.scheduler.schedule(5.seconds, 5.seconds, self, StartAnnounce)
 
         case Failure(e) =>
           logger.error("Announce error", e)
+          context.system.scheduler.schedule(5.seconds, 5.seconds, self, StartAnnounce)
+
       }
 
     case DoAnnounce =>
       announce(uploaded, downloaded, left, "") onComplete {
         case Success(TrackerResponse.Success(_, peers, _, _)) =>
-          logger.info(s"Got ${peers.size} peer(s) from tracker, ${peers.count(!peerConns.contains(_))} new peers")
-          //TODO send peers to TorrentSession, let him judge
-          peers.foreach { p =>
-            self ! AddPeer(p, None)
-          }
+          addPeers(peers)
 
         case Success(TrackerResponse.Error(reason)) =>
           logger.info(s"Tracker return error: $reason")
@@ -146,6 +142,14 @@ class PwpPeer(torrent: Torrent,
         case Failure(e) =>
           logger.error("Announce error", e)
       }
+  }
+
+  def addPeers(peers: List[Peer]) = {
+    logger.info(s"Got ${peers.size} peer(s) from tracker, ${peers.count(!peerConns.contains(_))} new peers")
+    //TODO send peers to TorrentSession, let him judge
+    peers.foreach { p =>
+      self ! AddPeer(p, None)
+    }
   }
 
   def peerRegistration: Receive = {
