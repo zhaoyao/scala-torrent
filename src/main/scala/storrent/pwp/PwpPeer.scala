@@ -17,12 +17,14 @@ import storrent._
 import scala.collection.mutable
 import scala.concurrent.Future
 import scala.concurrent.duration.DurationInt
+import scala.util.control.NonFatal
 import scala.util.{ Failure, Success }
 
 object PwpPeer {
 
   private case class UpdatePeerStats(uploaded: Long, downloaded: Long, left: Long)
   private case object DoAnnounce
+  private case object StartAnnounce
   private case class PeerUp(peer: Peer)
   private case class PeerDown(peer: Peer)
 
@@ -59,35 +61,17 @@ class PwpPeer(torrent: Torrent,
   // 创建一个 TorrentStats 接口，在 TorrentHandler/PieceHandler的相关方法中传入，暴露修改接口
 
   override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy(maxNrOfRetries = 3, loggingEnabled = true)({
-    case _: ActorInitializationException ⇒ Stop
-    case _: ActorKilledException         ⇒ Stop
-    case _: DeathPactException           ⇒ Stop
-    case e: Exception ⇒ {
+    case _: ActorInitializationException => Stop
+    case _: ActorKilledException         => Stop
+    case _: DeathPactException           => Stop
+    case e: Exception => {
       e.printStackTrace()
       Restart
     }
   })
 
-  def announce(uploaded: Long, downloaded: Long, left: Long, event: String = ""): Future[List[Peer]] = {
-    val resp = (announcer ? Announce(uploaded, downloaded, left, event))(announceTimeout).mapTo[TrackerResponse]
-    resp.onSuccess {
-      case TrackerResponse.Success(interval, _, _, _) =>
-        context.system.scheduler.scheduleOnce(interval.seconds, self, DoAnnounce)
-
-      case TrackerResponse.Error(msg) =>
-
-      //TODO handle announce error
-    }
-
-    resp.flatMap {
-      case TrackerResponse.Success(_, peers, _, _) => Future.successful(peers)
-      case TrackerResponse.Error(msg)              => Future.failed(new RuntimeException("announce failed: " + msg))
-    }
-  }
-
-  override def preStart(): Unit = {
-    //TODO start peer tcp listening
-    //    context.system.scheduler.schedule(10.seconds, 10.seconds, self, DumpPeers)
+  def announce(uploaded: Long, downloaded: Long, left: Long, event: String = ""): Future[TrackerResponse] = {
+    (announcer ? Announce(uploaded, downloaded, left, event))(announceTimeout).mapTo[TrackerResponse]
   }
 
   override def wrappedReceive: Receive = creatingTcpServer
@@ -131,16 +115,36 @@ class PwpPeer(torrent: Torrent,
       downloaded = d
       left = l
 
-    case DoAnnounce =>
+    case StartAnnounce =>
       announce(uploaded, downloaded, left, "") onComplete {
-        case Success(peers) =>
+        case Success(TrackerResponse.Success(_, peers, _, _)) =>
           logger.info(s"Got ${peers.size} peer(s) from tracker, ${peers.count(!peerConns.contains(_))} new peers")
           //TODO send peers to TorrentSession, let him judge
           peers.foreach { p =>
             self ! AddPeer(p, None)
           }
+
+        case Success(TrackerResponse.Error(reason)) =>
+          logger.info(s"Tracker return error: $reason")
+
         case Failure(e) =>
-          logger.error("Announce failure", e)
+          logger.error("Announce error", e)
+      }
+
+    case DoAnnounce =>
+      announce(uploaded, downloaded, left, "") onComplete {
+        case Success(TrackerResponse.Success(_, peers, _, _)) =>
+          logger.info(s"Got ${peers.size} peer(s) from tracker, ${peers.count(!peerConns.contains(_))} new peers")
+          //TODO send peers to TorrentSession, let him judge
+          peers.foreach { p =>
+            self ! AddPeer(p, None)
+          }
+
+        case Success(TrackerResponse.Error(reason)) =>
+          logger.info(s"Tracker return error: $reason")
+
+        case Failure(e) =>
+          logger.error("Announce error", e)
       }
   }
 

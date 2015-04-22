@@ -4,6 +4,12 @@ import java.io._
 import java.net.ServerSocket
 import java.security.MessageDigest
 
+import storrent.client.TrackerResponse
+
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
+import scala.concurrent.Future
+
 /**
  * User: zhaoyao
  * Date: 3/13/15
@@ -159,6 +165,21 @@ object Util {
       raf.readFully(data)
       data
     } finally raf.close()
+  }
+
+}
+
+object Test extends App {
+
+  import scala.concurrent.ExecutionContext.Implicits.global
+
+  val f: Future[TrackerResponse] = Future {
+    null.asInstanceOf[TrackerResponse]
+  }
+
+  f.onSuccess {
+    case TrackerResponse.Success(interval, _, _, _) =>
+      println(interval)
   }
 
 }

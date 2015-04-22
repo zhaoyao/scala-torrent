@@ -7,7 +7,8 @@ import akka.io.Tcp._
 import akka.io.{ IO, Tcp }
 import akka.pattern._
 import akka.util.ByteString
-import storrent.extension.{ AdditionalMessageDecoding, HandshakeEnabled }
+import storrent.extension.bep_10.Extended
+import storrent.extension.{ Bep10, bep_10, AdditionalMessageDecoding, HandshakeEnabled }
 import storrent.pwp.Message._
 import storrent.pwp.PeerConnection.Start
 import storrent.{ ActorStack, Peer, Slf4jLogging }
@@ -20,7 +21,7 @@ import scala.util.{ Failure, Success, Try }
 object PeerConnection {
 
   def props(infoHash: String, peerId: String, endpoint: Peer, session: ActorRef, inbound: Boolean) =
-    Props(classOf[PeerConnection], infoHash, peerId, endpoint, session, inbound, Set.empty)
+    Props(classOf[PeerConnection], infoHash, peerId, endpoint, session, inbound, Set(Bep10))
 
   case class Start(tcpConn: Option[ActorRef])
 
@@ -82,7 +83,7 @@ class PeerConnection(infoHash: String,
           context become handshake(requestor)
 
         case None =>
-          logger.debug(s"Creating connection to $endpoint")
+          logger.info(s"Creating connection to $endpoint")
           IO(Tcp)(context.system) ! Connect(new InetSocketAddress(endpoint.ip, endpoint.port))
 
       }
@@ -180,6 +181,9 @@ class PeerConnection(infoHash: String,
       case Uninterested =>
         this.interested = false
         session ! Tuple2(endpoint, Uninterested)
+
+      case x: Extended =>
+        logger.info(s"Got extended message: $x")
 
       case msg =>
         logger.trace(s"Pwp message => $msg")

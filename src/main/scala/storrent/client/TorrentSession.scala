@@ -2,16 +2,16 @@ package storrent.client
 
 import java.nio.file.Paths
 
-import akka.actor.{ Kill, Props }
-import storrent.TorrentFiles.{ Piece, PieceBlock }
+import akka.actor.{Kill, Props}
+import storrent.TorrentFiles.{Piece, PieceBlock}
 import storrent._
 import storrent.pwp.Message._
-import storrent.pwp.{ Message, PeerListener, PwpPeer }
+import storrent.pwp.{Message, PeerListener, PwpPeer}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.DurationInt
-import scala.util.{ Failure, Random, Success }
+import scala.util.{Failure, Random, Success}
 
 object TorrentSession {
 
@@ -20,7 +20,7 @@ object TorrentSession {
 
   case class PeerState(have: mutable.BitSet = mutable.BitSet.empty,
                        choked: Boolean = false,
-                       interested: Boolean = false /*, stats*/ )
+                       interested: Boolean = false /*, stats*/)
 
   val FixedBlockSize = 16 * 1024
 
@@ -50,7 +50,9 @@ object TorrentSession {
 
     def isCompleted = completedBlocks.length == piece.numBlocks(blockSize)
 
-    def withCompletedBlock(blockIndex: Int): ActivePiece = { blockRequestCount(blockIndex) = -1; this }
+    def withCompletedBlock(blockIndex: Int): ActivePiece = {
+      blockRequestCount(blockIndex) = -1; this
+    }
   }
 
 }
@@ -58,7 +60,7 @@ object TorrentSession {
 class TorrentSession(metainfo: Torrent,
                      storeUri: String,
                      blockSize: Int)
-    extends ActorStack with Slf4jLogging with PeerListener {
+  extends ActorStack with Slf4jLogging with PeerListener {
 
   import TorrentSession._
   import context.dispatcher
@@ -87,12 +89,7 @@ class TorrentSession(metainfo: Torrent,
   val allPieces = metainfo.files.pieces.toSet
   val activePieces = mutable.Map[Int, ActivePiece]()
 
-  val peerRequests = mutable.Map[Peer, ArrayBuffer[(Int, Int, Long)]]().withDefaultValue(ArrayBuffer.empty)
-
-  /**
-   * block -> (peer, issuedAt)
-   */
-  val inflightBlocks = mutable.Map[PieceBlock, mutable.Set[(Peer, Long)]]()
+  val peerRequests = mutable.Map[Peer, ArrayBuffer[(Int, Int, Long)]]().withDefault(_ => ArrayBuffer.empty)
 
   override def preStart(): Unit = {
     logger.info(s"Starting TorrentSession[${metainfo.infoHash}], pieces: ${metainfo.files.pieces.size}, pieceLength: ${metainfo.metainfo.info.pieceLength}")
@@ -108,21 +105,28 @@ class TorrentSession(metainfo: Torrent,
       handleMessage(peer, peerStates(peer), msg)
 
     case CheckRequest =>
-//      val current = System.currentTimeMillis()
-//
-//      inflightBlocks.foreach {
-//        case (blk, requestPairs) =>
-////          peers.retain(_._2 + RequestTimeout.toMillis < System.currentTimeMillis())
-//          def requestTimeout = { pair: (Peer, Long) =>
-//            val (_, time) = pair
-//            time + RequestTimeout.toMillis >= current
-//          }
-//
-//          requestPairs.filter(requestTimeout).foreach { p =>
-//            activePieces.
-//
-//          }
-//      }
+      val current = System.currentTimeMillis()
+      for ((peer, requests) <- peerRequests) {
+        val timeoutRequests = requests.filter(_._3 + RequestTimeout.toMillis < current)
+
+        for (
+          (pieceIndex, blkIndex, _) <- requests.filter(_._3 + RequestTimeout.toMillis < current) if activePieces.contains(pieceIndex)
+        ) {
+          val c = activePieces(pieceIndex).blockRequestCount(blkIndex)
+          if (c > 0) {
+            activePieces(pieceIndex).blockRequestCount(blkIndex) = c - 1
+          }
+        }
+        requests --= timeoutRequests
+      }
+
+      peerRequests.retain((_, r) => r.nonEmpty)
+
+      if (peerRequests.isEmpty) {
+        for ((p, _) <- new Random().shuffle(peerStates.filterNot(x => x._2.choked).toList).headOption) {
+          schedulePieceRequests2(p)
+        }
+      }
 
     case DumpStats =>
       logger.info(s"Peers: ${peerStates.size}")
@@ -130,21 +134,22 @@ class TorrentSession(metainfo: Torrent,
   }
 
   def cancelBlock(f: (PieceBlock => Boolean)) = {
-    inflightBlocks.filter(p => f(p._1)).foreach(p => {
-      val (blk, requests) = p
-      requests.foreach(pair => {
-        sendPeerMsg(pair._1, Cancel(blk.piece, blk.offset, blk.length))
-      })
-    })
-
-    inflightBlocks.retain { (blk, _) => !f(blk) }
+    //    inflightBlocks.filter(p => f(p._1)).foreach(p => {
+    //      val (blk, requests) = p
+    //      requests.foreach(pair => {
+    //        sendPeerMsg(pair._1, Cancel(blk.piece, blk.offset, blk.length))
+    //      })
+    //    })
+    //
+    //    inflightBlocks.retain { (blk, _) => !f(blk) }
   }
 
   def handleMessage(peer: Peer, state: PeerState, msg: Message): Unit = msg match {
     case Keepalive =>
-      schedulePieceRequests(peer)
+      schedulePieceRequests2(peer)
 
     case Choke =>
+      logger.info(s"$peer is choking us")
       peerStates += (peer -> state.copy(choked = true))
 
     case Unchoke =>
@@ -161,16 +166,18 @@ class TorrentSession(metainfo: Torrent,
       peerStates += (peer -> state)
 
       ifInterested(peer, pieces)
-      schedulePieceRequests(peer)
+      schedulePieceRequests2(peer)
 
     case Have(piece) =>
       state.have += piece
       peerStates += (peer -> state)
 
       ifInterested(peer, Set(piece))
-      schedulePieceRequests(peer)
+      schedulePieceRequests2(peer)
 
     case Message.Piece(pieceIndex, offset, data) =>
+      peerRequests(peer) --= peerRequests(peer).filter(t => t._1 == pieceIndex && t._2 == offset / blockSize)
+
       writePiece(pieceIndex, offset, data) match {
         case (true, Some(piece)) =>
           // cancel blocks belongs to this piece
@@ -186,7 +193,7 @@ class TorrentSession(metainfo: Torrent,
         //wait for other peers response
       }
 
-      schedulePieceRequests(peer)
+      schedulePieceRequests2(peer)
 
     case Request(piece, offset, length) =>
       store.readPiece(piece, offset, length) match {
@@ -210,6 +217,9 @@ class TorrentSession(metainfo: Torrent,
   def ifInterested(peer: Peer, pieces: Set[Int]) = {
     if ((activePieces.filterNot(_._2.isCompleted).keySet & pieces).nonEmpty && !interestedMarks.contains(peer)) {
       sendPeerMsg(peer, Interested)
+      interestedMarks += peer
+    } else {
+      sendPeerMsg(peer, Uninterested)
       interestedMarks += peer
     }
   }
@@ -281,90 +291,67 @@ class TorrentSession(metainfo: Torrent,
     val missing: Int = activePieces.values.foldLeft(0) { (sum, ap) =>
       sum + ap.blockRequestCount.count(_ != -1)
     }
-    logger.info("Total blocks: %d, missing: %d, completed: %d, %.2f%%".format(
+
+    val healthy = peerStates.values.flatMap(_.have).toSet.size.toFloat / allPieces.size
+
+    logger.info("Total blocks: %d, missing: %d, completed: %d, %.2f%%. Healthy: %.2f%%".format(
       totalBlocks,
       missing,
       totalBlocks - missing,
-      ((totalBlocks - missing).toFloat / totalBlocks) * 100
+      ((totalBlocks - missing).toFloat / totalBlocks) * 100,
+      healthy * 100
     ))
+
+    logger.info(s"Current requests $peerRequests")
   }
 
-  def schedulePieceRequests(peer: Peer): Unit = {
-    for ((pieceIndex, blockIndex) <- chooseBlock(peer)) {
-      //      val ap = activePieces(pieceIndex)
-      activePieces(pieceIndex).blockRequestCount(blockIndex) += 1
-      peerRequests(peer) += ((pieceIndex, blockIndex, System.currentTimeMillis()))
-
-      val blockLength = metainfo.files.pieces(pieceIndex).blockLength(blockIndex, blockSize)
-      sendPeerMsg(peer, Request(pieceIndex, blockIndex * blockSize, blockLength))
-      logger.info(s"Requesting block => ${Request(pieceIndex, blockIndex * blockSize, blockLength)}")
+  def schedulePieceRequests2(peer: Peer): Unit = {
+    def choosePiece(): Option[Int] = {
+      val n = allPieces.size
+      val start = new Random().nextInt(n)
+      checkRange(start, n).orElse(checkRange(0, start))
     }
+
+    def checkRange(start: Int, end: Int): Option[Int] = {
+      val state = peerStates(peer)
+      val end2 = Math.min(end, Math.min(allPieces.size - 1, state.have.max))
+      (start until end2).find(p => !completedPieces(p) && state.have(p) && activePieces.contains(p))
+    }
+
+    chooseBlock2(peer) match {
+      case Some((pieceIndex, blkIndex)) =>
+        requestBlock(peer, pieceIndex, blkIndex)
+
+      case None =>
+        choosePiece() match {
+          case Some(pieceIndex2) =>
+            val blkIndex2 = activePieces(pieceIndex2).blockRequestCount.zipWithIndex.sortBy(_._1).head._2
+            requestBlock(peer, pieceIndex2, blkIndex2)
+
+          case None =>
+            sendPeerMsg(peer, Uninterested)
+        }
+    }
+
+
   }
 
-  var _bootstrappingPieces: List[Int] = Nil
+  def requestBlock(peer: Peer, pieceIndex: Int, blockIndex: Int) = {
+    activePieces(pieceIndex).blockRequestCount(blockIndex) += 1
+    peerRequests(peer) = peerRequests(peer) += ((pieceIndex, blockIndex, System.currentTimeMillis()))
 
-  private def bootstrappingPieces = {
-    if (_bootstrappingPieces.isEmpty) {
+    val blockLength = metainfo.files.pieces(pieceIndex).blockLength(blockIndex, blockSize)
+    sendPeerMsg(peer, Request(pieceIndex, blockIndex * blockSize, blockLength))
+//    logger.info(s"Requesting block $peer => ${Request(pieceIndex, blockIndex * blockSize, blockLength)}")
+  }
 
-      if (peerStates.size <= 0) {
-        //TODO 如果现有成功下载的block，直接选用，不等待更多peer连接
-      } else {
-
-        //从已经下载的piece中选择
-        val piecesWithCompletedBlock = activePieces.values
-          .filter(_.completedBlocks.nonEmpty).toList
-          .sortBy(-_.completedBlocks.length)
-          .take(bootstrappingPieceCount)
-          .map(_.piece.idx)
-
-        _bootstrappingPieces =
-          if (piecesWithCompletedBlock.size != bootstrappingPieceCount) {
-            //数量不够 按照各节点拥有个数选出前4个piece
-            piecesWithCompletedBlock ++ peerStates
-              .map(_._2).flatMap(_.have)
-              .filterNot(piecesWithCompletedBlock.contains)
-              .foldLeft(Map.empty[Int, Int].withDefault(_ => 0)) { (m, piece) => m + (piece -> (m(piece) + 1)) }.toList
-              .sortBy(-_._2)
-              .map(_._1)
-              .take(bootstrappingPieceCount - piecesWithCompletedBlock.size)
-          } else {
-            piecesWithCompletedBlock
-          }
-
-        logger.debug(s"Bootstrapping pieces ${_bootstrappingPieces}")
+  def chooseBlock2(peer: Peer): Option[(Int, Int)] = {
+    for ((pieceIndex, ap) <- activePieces if peerStates(peer).have(pieceIndex)) {
+      for ((dl, blkIndex) <- ap.blockRequestCount.zipWithIndex if dl == 0) {
+        return Some((pieceIndex, blkIndex))
       }
     }
-    _bootstrappingPieces
-  }
-
-  def chooseBlock(peer: Peer): Option[(Int, Int)] = {
-    val pendingPiece: Option[Int] = if (completedPieces.size < bootstrappingPieceCount) {
-      //pick a piece randomly
-      new Random().shuffle(
-        bootstrappingPieces.filterNot(completedPieces.contains)
-      ).find(peerStates(peer).have).headOption
-    } else {
-      peerStates
-        .map(_._2).flatMap(_.have)
-        .foldLeft(Map.empty[Int, Int].withDefault(_ => 0)) { (m, piece) =>
-          m + (piece -> (m(piece) + 1))
-        }
-        .filter(p => activePieces.contains(p._1))
-        .toList.sortBy(-_._2).map(_._1)
-        .find(peerStates(peer).have)
-    }
-    //Total blocks: 3194, missing: 3127, completed: 67, 2.10%
-    // if completedPieces.size >= 4  select rarest pieces
-    // if requestedBlocks == totalBlocks end game
-    pendingPiece flatMap { p =>
-      //find block
-      activePieces(p).blockRequestCount.zipWithIndex
-        .find(_._1 == 0)
-        //TODO end game
-        /*.orElse(missingBlocks.find(_ != -1))  */
-        .map(b => (p, b._2))
-    }
-
+    None
   }
 
   /**

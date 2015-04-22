@@ -8,6 +8,6 @@ trait HandshakeEnabled {
 
   def reservedBit: ReservedBit
 
-  def isEnabled(hs: Handshake) = (hs.reserved(reservedBit.i) & reservedBit.value) == 1
+  def isEnabled(hs: Handshake) = (hs.reserved(reservedBit.i) & reservedBit.value) == reservedBit.value
 
 }

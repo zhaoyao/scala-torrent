@@ -3,7 +3,10 @@ package storrent.pwp
 import java.nio.ByteBuffer
 
 import akka.util.ByteString
+import com.typesafe.scalalogging.{ StrictLogging, Logger }
+import storrent.Slf4jLogging
 import storrent.extension.AdditionalMessageDecoding
+import storrent.extension.bep_10.Extended
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{ Success, Try }
@@ -22,7 +25,7 @@ object MessageDecoder {
  * ** NOT THREAD SAFE
  */
 class MessageDecoder(extensions: Set[AdditionalMessageDecoding] = Set.empty,
-                     maxMessageLength: Int = 1024 * 1024 * 5) {
+                     maxMessageLength: Int = 1024 * 1024 * 5) extends StrictLogging {
 
   import storrent.pwp.MessageDecoder._
 
@@ -32,7 +35,7 @@ class MessageDecoder(extensions: Set[AdditionalMessageDecoding] = Set.empty,
   var payloadBuffer: ByteBuffer = null
 
   var msgLength = -1
-  var msgId: Byte = -1;
+  var msgId: Byte = -1
 
   def reset() = {
     state = State_WANT_LENGTH
@@ -88,6 +91,7 @@ class MessageDecoder(extensions: Set[AdditionalMessageDecoding] = Set.empty,
       ret.toOption
     } else {
       //TODO handle unknown message logging or throw error?
+      logger.info(s"Receive unknown message. id=$msgId")
       reset()
       None
     }
@@ -107,34 +111,34 @@ class MessageDecoder(extensions: Set[AdditionalMessageDecoding] = Set.empty,
           if (msgLength > 1) {
             payloadBuffer = ByteBuffer.allocate(this.msgLength - 1)
           }
-           decode(data.drop(4))
+          decode(data.drop(4))
         } else {
-           (None, ByteString.empty)
+          (None, ByteString.empty)
         }
 
       case State_WANT_MSG_ID =>
         if (this.msgLength == 0) {
           //keepalive
           reset()
-           (Some(Keepalive), data)
+          (Some(Keepalive), data)
 
         } else {
           if (data.length >= 1) {
             this.msgId = data.head
             state = State_WANT_PAYLOAD
-             decode(data.drop(1))
+            decode(data.drop(1))
           } else {
-             (None, ByteString.empty)
+            (None, ByteString.empty)
           }
         }
 
       case State_WANT_PAYLOAD =>
         if (this.msgLength == 1) {
           // no payload
-           (decodeMessage(), data)
+          (decodeMessage(), data)
 
         } else {
-          require(payloadBuffer != null, s"payloadBuffer is null while msgLength=$msgLength")
+          require(payloadBuffer != null, s"payloadBuffer is null while id=$msgId msgLength=$msgLength")
 
           val payloadNeed = msgLength - 1 - payloadBuffer.position()
           val payloadHave = Math.min(data.length, payloadNeed)
@@ -144,7 +148,7 @@ class MessageDecoder(extensions: Set[AdditionalMessageDecoding] = Set.empty,
             // complete message decoding
             (decodeMessage(), data.drop(payloadHave))
           } else {
-             (None, ByteString.empty)
+            (None, ByteString.empty)
           }
 
         }

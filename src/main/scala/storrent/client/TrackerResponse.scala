@@ -37,17 +37,25 @@ object TrackerResponse {
         }
       }
 
-      override def read(value: BcValue): Success =
-        value.asBcDict.getFields("interval", "peers", "complete", "incomplete") match {
-          case Seq(BcInt(interval), BcString(peersData), c, i) =>
-            Success(interval.toInt,
-              peersData.sliding(6, 6).map(Peer.parseCompact).toList,
+      override def read(value: BcValue): Success = {
+        val peers = value.asBcDict.getFields("peers") match {
+          case Seq(BcString(peersData)) =>
+            peersData.sliding(6, 6).map(Peer.parseCompact).toList
+          case Seq(peers: BcList) =>
+            peers.elements.map(peerFormat.read).toList
+        }
+
+        value.asBcDict.getFields("interval", "min interval", "complete", "incomplete") match {
+          case Seq(BcInt(interval), BcInt(minInterval), BcString(peersData), c, i) =>
+            Success(minInterval.toInt,
+              peers,
               c.convertTo[Option[Int]], i.convertTo[Option[Int]])
-          case Seq(BcInt(interval), peers: BcList, c, i) =>
+          case Seq(BcInt(interval), BcNil, BcString(peersData), c, i) =>
             Success(interval.toInt,
-              peers.elements.map(peerFormat.read).toList,
+              peers,
               c.convertTo[Option[Int]], i.convertTo[Option[Int]])
         }
+      }
     }
 
     implicit def errorFormat: BencodingFormat[Error] = bencodingFormat(Error, "failure reason")

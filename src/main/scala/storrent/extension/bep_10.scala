@@ -57,7 +57,7 @@ object bep_10 {
 
 }
 
-class bep_10 extends HandshakeEnabled with AdditionalMessageDecoding {
+trait bep_10 extends HandshakeEnabled with AdditionalMessageDecoding {
 
   import storrent.extension.bep_10._
 
@@ -68,7 +68,6 @@ class bep_10 extends HandshakeEnabled with AdditionalMessageDecoding {
   override def reservedBit: ReservedBit = ReservedBit(5, 0x10)
 
   override def parseMessage: PartialFunction[(Byte, ByteBuffer), Try[Message]] = {
-
     case (MsgExtended, payload) =>
       val extendedMsgId = payload.get()
       Try(registeredMessages
@@ -78,3 +77,5 @@ class bep_10 extends HandshakeEnabled with AdditionalMessageDecoding {
 
   }
 }
+
+object Bep10 extends bep_10
