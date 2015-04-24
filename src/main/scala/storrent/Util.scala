@@ -2,10 +2,10 @@ package storrent
 
 import java.io._
 import java.net.ServerSocket
-import java.nio.file.{Paths, Files}
+import java.nio.file.{ Paths, Files }
 import java.security.MessageDigest
 
-import storrent.client.{TorrentSession, TorrentStore, TrackerResponse}
+import storrent.client.{ TorrentSession, TorrentStore, TrackerResponse }
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer

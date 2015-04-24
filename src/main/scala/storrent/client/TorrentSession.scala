@@ -6,7 +6,7 @@ import akka.actor.{ ActorRef, Kill, Props }
 import storrent.TorrentFiles.{ Piece, PieceBlock }
 import storrent._
 import storrent.pwp.Message._
-import storrent.pwp.PeerManager.{Send, ClosePeer, DisableOutboundConnection}
+import storrent.pwp.PeerManager.{ Send, ClosePeer, DisableOutboundConnection }
 import storrent.pwp.{ PeerManager, Message, PeerListener, PeerManager$ }
 
 import scala.collection.mutable
@@ -154,14 +154,14 @@ class TorrentSession(metainfo: Torrent,
     case Uninterested =>
       peerStates += (peer -> state.copy(interested = false))
 
-    case b@Bitfield(pieces) =>
+    case b @ Bitfield(pieces) =>
       state.have ++= pieces
       peerStates += (peer -> state)
 
       ifInterested(peer, b)
       schedulePieceRequests2(peer)
 
-    case h@Have(piece) =>
+    case h @ Have(piece) =>
       state.have += piece
       peerStates += (peer -> state)
 
@@ -296,7 +296,6 @@ class TorrentSession(metainfo: Torrent,
                 ap.blockRequestCount(blk.index) = 0
               })
 
-
               (true, None)
           }
         } else {
@@ -333,7 +332,7 @@ class TorrentSession(metainfo: Torrent,
       healthy * 100
     ))
 
-//    logger.info(s"Active pieces ${activePieces.map(p => (p._1, p._2.blockRequestCount.toList))}")
+    //    logger.info(s"Active pieces ${activePieces.map(p => (p._1, p._2.blockRequestCount.toList))}")
   }
 
   def schedulePieceRequests2(peer: Peer): Unit = {
@@ -415,9 +414,9 @@ class TorrentSession(metainfo: Torrent,
   }
 
   override def onPeerAdded(peer: Peer): Unit = {
-//    if (completedPieces.nonEmpty) {
-//      sendPeerMsg(peer, Bitfield(completedPieces.toSet))
-//    }
+    //    if (completedPieces.nonEmpty) {
+    //      sendPeerMsg(peer, Bitfield(completedPieces.toSet))
+    //    }
     sendPeerMsg(peer, Unchoke)
   }
 

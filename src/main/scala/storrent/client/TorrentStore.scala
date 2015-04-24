@@ -245,25 +245,25 @@ class LocalFilesystem(val files: TorrentFiles,
 
       case Left(None) =>
         //计算剩余blocks
-//        val r = pieceBlockFiles(0).foldLeft((0, List[PieceBlock]())) { (p, blkFile) =>
-//          val (lastLength, ret) = p
-//          blkFile.getName match {
-//            case blockFileRegex(_, offset, length) =>
-//              require(offset.toInt % blockSize == 0, "invalid block offset")
-//              if (lastLength != offset.toInt) {
-//                (offset.toInt + length.toInt, ret ::: List(PieceBlock(pieceIndex, lastLength / blockSize, lastLength, offset.toInt - lastLength)))
-//              } else {
-//                (offset.toInt + length.toInt, ret)
-//              }
-//          }
-//        }
-//
-//        val result = r._2
-//        Right(if (r._1 != files.pieceLength(pieceIndex)) {
-//          result ::: files.pieces(pieceIndex).blocks(blockSize).filter(blk => blk.offset >= r._1).toList
-//        } else {
-//          result
-//        })
+        //        val r = pieceBlockFiles(0).foldLeft((0, List[PieceBlock]())) { (p, blkFile) =>
+        //          val (lastLength, ret) = p
+        //          blkFile.getName match {
+        //            case blockFileRegex(_, offset, length) =>
+        //              require(offset.toInt % blockSize == 0, "invalid block offset")
+        //              if (lastLength != offset.toInt) {
+        //                (offset.toInt + length.toInt, ret ::: List(PieceBlock(pieceIndex, lastLength / blockSize, lastLength, offset.toInt - lastLength)))
+        //              } else {
+        //                (offset.toInt + length.toInt, ret)
+        //              }
+        //          }
+        //        }
+        //
+        //        val result = r._2
+        //        Right(if (r._1 != files.pieceLength(pieceIndex)) {
+        //          result ::: files.pieces(pieceIndex).blocks(blockSize).filter(blk => blk.offset >= r._1).toList
+        //        } else {
+        //          result
+        //        })
         Left(None)
 
       case Right(invalidBlockFiles) =>
@@ -475,7 +475,7 @@ class LocalFilesystem(val files: TorrentFiles,
     val pieceLength = files.pieceLength(piece)
 
     //have whole piece
-//    logger.info(s"merge blocks piece=$piece length=${pieceLength} file_length=${blockDownloaded} file_count=${blkFiles.length} ${blkFiles.map(f=>(f.getName, f.length()))} ")
+    //    logger.info(s"merge blocks piece=$piece length=${pieceLength} file_length=${blockDownloaded} file_count=${blkFiles.length} ${blkFiles.map(f=>(f.getName, f.length()))} ")
     if (blockDownloaded == pieceLength) {
       def blocksInputStream() = blkFiles.map(new FileInputStream(_)).foldLeft(EmptyInputStream)(_ ++ _)
 

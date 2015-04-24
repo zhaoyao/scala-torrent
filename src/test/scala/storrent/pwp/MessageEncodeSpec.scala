@@ -2,7 +2,8 @@ package storrent.pwp
 
 import java.nio.ByteBuffer
 
-import org.scalatest.{ Matchers, WordSpec }
+import akka.util.ByteString
+import org.scalatest.{ Inside, Matchers, WordSpec }
 
 /**
  * User: zhaoyao
@@ -42,11 +43,10 @@ class MessageEncodeSpec extends WordSpec with Matchers with MessageSpecBase {
     }
 
     "Encode 'Bitfield properly" in {
-      Bitfield(Set(1, 3, 5, 7, 9)).encode shouldEqual encodedMsg(MsgBitfield, 2) { b =>
-        b.put(Integer.parseInt("10101010", 2).toByte)
-        b.put(Integer.parseInt("10000000", 2).toByte)
+      Inside.inside(new MessageDecoder().decode(ByteString(Bitfield(Set(1, 3, 5, 7, 9)).encode))) {
+        case (Some(Bitfield(pieces)), bs) if bs.isEmpty =>
+          pieces shouldEqual Set(1, 3, 5, 7, 9)
       }
-
     }
 
     "Encode 'Request properly" in {

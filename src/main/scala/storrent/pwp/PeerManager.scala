@@ -156,7 +156,7 @@ class PeerManager(torrent: Torrent,
   def peerMessage: Receive = {
     case Send(p: Peer, msg: Message) =>
       //转发消息
-//      logger.info(s"Sending peer message $p => $msg")
+      //      logger.info(s"Sending peer message $p => $msg")
       peerConns.get(p) match {
         case Some(conn) =>
           conn.forward(msg)

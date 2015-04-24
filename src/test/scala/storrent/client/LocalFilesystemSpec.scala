@@ -2,7 +2,7 @@ package storrent.client
 
 import java.io.{ RandomAccessFile, File }
 
-import org.scalatest.{ BeforeAndAfter, Matchers, WordSpec }
+import org.scalatest.{ Inside, BeforeAndAfter, Matchers, WordSpec }
 import storrent.TorrentFiles.PieceBlock
 import storrent.pwp.Message.Piece
 import storrent.{ TorrentFiles, Util }
@@ -100,11 +100,7 @@ class LocalFilesystemSpec extends WordSpec with Matchers with BeforeAndAfter {
         case Success(Some(d)) =>
           fs2.writePiece(0, 0, d.take(1)) shouldBe Success(true)
           new File(dataDir, s".0.0.1.blk").exists() shouldBe true
-          fs2.mergeBlocks(0) shouldEqual Right(List(
-            PieceBlock(0, 1, 1, blockSize),
-            PieceBlock(0, 2, 2, blockSize),
-            PieceBlock(0, 3, 3, blockSize)
-          ))
+          fs2.mergeBlocks(0) shouldEqual Left(None)
 
           fs2.writePiece(0, 1, d.take(2).drop(1)) shouldBe Success(true)
           fs2.writePiece(0, 2, d.take(3).drop(2)) shouldBe Success(true)
@@ -113,7 +109,9 @@ class LocalFilesystemSpec extends WordSpec with Matchers with BeforeAndAfter {
           new File(dataDir, s".0.1.1.blk").exists() shouldBe true
           new File(dataDir, s".0.2.1.blk").exists() shouldBe true
           new File(dataDir, s".0.3.1.blk").exists() shouldBe true
-          fs2.mergeBlocks(0) shouldEqual Left(torrentFiles.pieces.head)
+          Inside.inside(fs2.mergeBlocks(0)) {
+            case Left(Some(TorrentFiles.Piece(0, _, _))) =>
+          }
 
           new File(dataDir, s".0.0.1.blk").exists() shouldBe false
           new File(dataDir, s".0.1.1.blk").exists() shouldBe false
