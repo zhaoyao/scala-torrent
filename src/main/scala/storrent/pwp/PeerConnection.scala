@@ -5,23 +5,22 @@ import java.net.InetSocketAddress
 import akka.actor._
 import akka.io.Tcp._
 import akka.io.{ IO, Tcp }
-import akka.pattern._
 import akka.util.ByteString
 import storrent.extension.bep_10.Extended
-import storrent.extension.{ Bep10, bep_10, AdditionalMessageDecoding, HandshakeEnabled }
+import storrent.extension.{ AdditionalMessageDecoding, Bep10, HandshakeEnabled }
 import storrent.pwp.Message._
-import storrent.pwp.PeerConnection.Start
 import storrent.{ ActorStack, Peer, Slf4jLogging }
 
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.concurrent.duration.DurationInt
+import scala.util.control.NonFatal
 import scala.util.{ Failure, Success, Try }
 
 object PeerConnection {
 
-  def props(infoHash: String, peerId: String, endpoint: Peer, session: ActorRef, inbound: Boolean) =
-    Props(classOf[PeerConnection], infoHash, peerId, endpoint, session, inbound, Set(Bep10))
+  def props(infoHash: String, peerId: String, endpoint: Peer, msgHandler: ActorRef, inbound: Boolean) =
+    Props(classOf[PeerConnection], infoHash, peerId, endpoint, msgHandler, inbound, Set(Bep10))
 
   case class Start(tcpConn: Option[ActorRef])
 
@@ -40,13 +39,13 @@ object PeerConnection {
 class PeerConnection(infoHash: String,
                      peerId: String,
                      endpoint: Peer,
-                     session: ActorRef,
+                     msgHandler: ActorRef,
                      inbound: Boolean,
                      handshakeExtensions: Set[HandshakeEnabled with AdditionalMessageDecoding] = Set.empty)
     extends ActorStack with Slf4jLogging with Stash {
 
-  import context.dispatcher
   import PeerConnection._
+  import context.dispatcher
 
   var decoder: MessageDecoder = _
   val handshake: Handshake = Handshake(infoHash, peerId)
@@ -83,7 +82,7 @@ class PeerConnection(infoHash: String,
           context become handshake(requestor)
 
         case None =>
-          logger.info(s"Creating connection to $endpoint")
+          logger.debug(s"Creating connection to $endpoint")
           IO(Tcp)(context.system) ! Connect(new InetSocketAddress(endpoint.ip, endpoint.port))
 
       }
@@ -164,23 +163,23 @@ class PeerConnection(infoHash: String,
       context stop self
   }
 
-  def handleInboundData(data: ByteString): Unit = {
+  def handleInboundData(data: ByteString): Unit = try {
     decodeMessage(data).foreach {
       case Choke =>
         this.choked = true
-        session ! Tuple2(endpoint, Choke)
+        msgHandler ! PeerManager.Received(endpoint, Choke)
 
       case Unchoke =>
         this.choked = false
-        session ! Tuple2(endpoint, Unchoke)
+        msgHandler ! PeerManager.Received(endpoint, Unchoke)
 
       case Interested =>
         this.interested = true
-        session ! Tuple2(endpoint, Interested)
+        msgHandler ! PeerManager.Received(endpoint, Interested)
 
       case Uninterested =>
         this.interested = false
-        session ! Tuple2(endpoint, Uninterested)
+        msgHandler ! PeerManager.Received(endpoint, Uninterested)
 
       case x: Extended =>
         logger.info(s"Got extended message: $x")
@@ -188,8 +187,11 @@ class PeerConnection(infoHash: String,
       case msg =>
         logger.trace(s"Pwp message => $msg")
         // should we let torrent client handle peer timeout ?
-        session ! Tuple2(endpoint, msg)
+        msgHandler ! PeerManager.Received(endpoint, msg)
     }
+  } catch {
+    case NonFatal(_) =>
+      context stop self
   }
 
   def attachTcpConn(tcpConn: ActorRef) = {

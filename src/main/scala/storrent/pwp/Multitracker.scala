@@ -1,8 +1,9 @@
-package storrent.client
+package storrent.pwp
 
 import akka.actor.ActorSystem
 import spray.client.pipelining._
 import spray.http.{ HttpRequest, HttpResponse, Uri }
+import storrent.client.TrackerResponse
 
 import scala.concurrent.Future
 
@@ -201,4 +202,3 @@ class UseBest(val system: ActorSystem, trackers: List[String]) extends Multitrac
 class PreferFirstTier(val system: ActorSystem, firstTiers: List[String], backups: List[List[String]]) extends MultitrackerStrategy {
   override def announce(infoHash: String, peerId: String, port: Int, uploaded: Long, downloaded: Long, left: Long, event: String): Future[TrackerResponse] = ???
 }
-

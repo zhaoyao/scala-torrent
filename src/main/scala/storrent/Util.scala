@@ -2,9 +2,10 @@ package storrent
 
 import java.io._
 import java.net.ServerSocket
+import java.nio.file.{Paths, Files}
 import java.security.MessageDigest
 
-import storrent.client.TrackerResponse
+import storrent.client.{TorrentSession, TorrentStore, TrackerResponse}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -171,15 +172,10 @@ object Util {
 
 object Test extends App {
 
-  import scala.concurrent.ExecutionContext.Implicits.global
+  val t = Torrent(Files.readAllBytes(Paths.get("src/test/resources/torrents/ubuntu.torrent"))).get
 
-  val f: Future[TrackerResponse] = Future {
-    null.asInstanceOf[TrackerResponse]
-  }
+  val fs = TorrentStore(t, "file:///tmp/test", TorrentSession.FixedBlockSize)
 
-  f.onSuccess {
-    case TrackerResponse.Success(interval, _, _, _) =>
-      println(interval)
-  }
+  println(fs.mergeBlocks(0))
 
 }

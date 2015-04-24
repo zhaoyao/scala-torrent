@@ -56,15 +56,6 @@ class MessageDecodeSpec extends WordSpec with Matchers with MessageSpecBase {
     }
 
     "Decode Bitfield properly" in {
-      inside(new MessageDecoder().decode(encodedMsg(MsgBitfield, 2)(b => {
-        b.put(Integer.parseInt("10101010", 2).toByte)
-        b.put(Integer.parseInt("10000000", 2).toByte)
-      }))) {
-        case (Some(m: Bitfield), d: ByteString) =>
-          m.pieceSet shouldEqual Set(0, 2, 4, 6, 8)
-          d.length shouldEqual 0
-      }
-
       inside(new MessageDecoder().decode(new Bitfield((0 until 1454).toSet).encode)) {
         case (Some(m: Bitfield), d: ByteString) =>
           m.pieceSet shouldEqual (0 until 1454).toSet

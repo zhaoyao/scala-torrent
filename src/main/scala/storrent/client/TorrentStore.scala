@@ -37,7 +37,7 @@ trait TorrentStore {
 
   def resume(): Map[Int, Set[PieceBlock]]
 
-  def mergeBlocks(pieceIndex: Int): Either[Piece, List[PieceBlock]]
+  def mergeBlocks(pieceIndex: Int): Either[Option[Piece], List[PieceBlock]]
 
   def mergePieces()
 
@@ -236,34 +236,35 @@ class LocalFilesystem(val files: TorrentFiles,
    * block文件缺失，返回待下载的block
    * piece校验失败，删除所有block文件，并返回所有待下载block
    */
-  def mergeBlocks(pieceIndex: Int): Either[Piece, List[PieceBlock]] = {
+  def mergeBlocks(pieceIndex: Int): Either[Option[Piece], List[PieceBlock]] = {
     maybeMergeBlocks(pieceIndex) match {
       case Left(Some(mergedPieceFile)) =>
         val piece = files.pieces(pieceIndex)
         //        mergePieceFile(piece, mergedPieceFile)
-        Left(piece)
+        Left(Some(piece))
 
       case Left(None) =>
         //计算剩余blocks
-        val r = pieceBlockFiles(0).foldLeft((0, List[PieceBlock]())) { (p, blkFile) =>
-          val (lastLength, ret) = p
-          blkFile.getName match {
-            case blockFileRegex(_, offset, length) =>
-              require(offset.toInt % blockSize == 0, "invalid block offset")
-              if (lastLength != offset.toInt) {
-                (offset.toInt + length.toInt, ret ::: List(PieceBlock(pieceIndex, lastLength / blockSize, lastLength, offset.toInt - lastLength)))
-              } else {
-                (offset.toInt + length.toInt, ret)
-              }
-          }
-        }
-
-        val result = r._2
-        Right(if (r._1 != files.pieceLength(pieceIndex)) {
-          result ::: files.pieces(pieceIndex).blocks(blockSize).filter(blk => blk.offset >= r._1).toList
-        } else {
-          result
-        })
+//        val r = pieceBlockFiles(0).foldLeft((0, List[PieceBlock]())) { (p, blkFile) =>
+//          val (lastLength, ret) = p
+//          blkFile.getName match {
+//            case blockFileRegex(_, offset, length) =>
+//              require(offset.toInt % blockSize == 0, "invalid block offset")
+//              if (lastLength != offset.toInt) {
+//                (offset.toInt + length.toInt, ret ::: List(PieceBlock(pieceIndex, lastLength / blockSize, lastLength, offset.toInt - lastLength)))
+//              } else {
+//                (offset.toInt + length.toInt, ret)
+//              }
+//          }
+//        }
+//
+//        val result = r._2
+//        Right(if (r._1 != files.pieceLength(pieceIndex)) {
+//          result ::: files.pieces(pieceIndex).blocks(blockSize).filter(blk => blk.offset >= r._1).toList
+//        } else {
+//          result
+//        })
+        Left(None)
 
       case Right(invalidBlockFiles) =>
         // have complete pieces, but not valid
@@ -359,7 +360,6 @@ class LocalFilesystem(val files: TorrentFiles,
     raf.seek(0)
 
     val markers = pieces.map(_ => raf.readInt())
-    logger.info(s"Checking ${tmpFile.getName}: $markers")
 
     if (markers.forall(_ == 1)) {
       // create real file
@@ -475,6 +475,7 @@ class LocalFilesystem(val files: TorrentFiles,
     val pieceLength = files.pieceLength(piece)
 
     //have whole piece
+//    logger.info(s"merge blocks piece=$piece length=${pieceLength} file_length=${blockDownloaded} file_count=${blkFiles.length} ${blkFiles.map(f=>(f.getName, f.length()))} ")
     if (blockDownloaded == pieceLength) {
       def blocksInputStream() = blkFiles.map(new FileInputStream(_)).foldLeft(EmptyInputStream)(_ ++ _)
 

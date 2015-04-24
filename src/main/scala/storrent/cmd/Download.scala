@@ -5,7 +5,7 @@ import java.nio.file.{ Paths, Files }
 import akka.actor.ActorSystem
 import storrent.Torrent
 import storrent.client.TorrentSession
-import storrent.pwp.PwpPeer
+import storrent.pwp.PeerManager$
 
 import scala.util.{ Failure, Success }
 

@@ -108,6 +108,9 @@ class MessageDecoder(extensions: Set[AdditionalMessageDecoding] = Set.empty,
           this.lengthBuffer.rewind()
           this.msgLength = lengthBuffer.getInt
           state = State_WANT_MSG_ID
+
+          require(msgLength <= maxMessageLength, "msg length too long")
+
           if (msgLength > 1) {
             payloadBuffer = ByteBuffer.allocate(this.msgLength - 1)
           }

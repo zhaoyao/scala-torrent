@@ -4,7 +4,7 @@ import sbencoding._
 import storrent.Peer
 import storrent.Peer.BencodingProtocol.peerFormat
 
-trait TrackerResponse
+sealed trait TrackerResponse
 
 object TrackerResponse {
 
@@ -46,11 +46,11 @@ object TrackerResponse {
         }
 
         value.asBcDict.getFields("interval", "min interval", "complete", "incomplete") match {
-          case Seq(BcInt(interval), BcInt(minInterval), BcString(peersData), c, i) =>
+          case Seq(BcInt(interval), BcInt(minInterval), c, i) =>
             Success(minInterval.toInt,
               peers,
               c.convertTo[Option[Int]], i.convertTo[Option[Int]])
-          case Seq(BcInt(interval), BcNil, BcString(peersData), c, i) =>
+          case Seq(BcInt(interval), BcNil, c, i) =>
             Success(interval.toInt,
               peers,
               c.convertTo[Option[Int]], i.convertTo[Option[Int]])

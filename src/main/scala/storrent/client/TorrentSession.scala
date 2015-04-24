@@ -2,16 +2,17 @@ package storrent.client
 
 import java.nio.file.Paths
 
-import akka.actor.{Kill, Props}
-import storrent.TorrentFiles.{Piece, PieceBlock}
+import akka.actor.{ ActorRef, Kill, Props }
+import storrent.TorrentFiles.{ Piece, PieceBlock }
 import storrent._
 import storrent.pwp.Message._
-import storrent.pwp.{Message, PeerListener, PwpPeer}
+import storrent.pwp.PeerManager.{Send, ClosePeer, DisableOutboundConnection}
+import storrent.pwp.{ PeerManager, Message, PeerListener, PeerManager$ }
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.concurrent.duration.DurationInt
-import scala.util.{Failure, Random, Success}
+import scala.util.{ Failure, Random, Success }
 
 object TorrentSession {
 
@@ -20,7 +21,8 @@ object TorrentSession {
 
   case class PeerState(have: mutable.BitSet = mutable.BitSet.empty,
                        choked: Boolean = false,
-                       interested: Boolean = false /*, stats*/)
+                       interested: Boolean = false,
+                       weAreInterested: Option[Boolean] = None)
 
   val FixedBlockSize = 16 * 1024
 
@@ -60,7 +62,7 @@ object TorrentSession {
 class TorrentSession(metainfo: Torrent,
                      storeUri: String,
                      blockSize: Int)
-  extends ActorStack with Slf4jLogging with PeerListener {
+    extends ActorStack with Slf4jLogging with PeerListener {
 
   import TorrentSession._
   import context.dispatcher
@@ -68,7 +70,7 @@ class TorrentSession(metainfo: Torrent,
   val files = TorrentFiles.fromMetainfo(metainfo)
   val store = TorrentStore(metainfo, Paths.get(storeUri, metainfo.infoHash).toString, blockSize)
 
-  val hostPeer = context.actorOf(PwpPeer.props(metainfo, 0, self))
+  var peerManager: ActorRef = null
 
   var peerStates = mutable.Map[Peer, PeerState]().withDefault(p => PeerState())
 
@@ -94,6 +96,8 @@ class TorrentSession(metainfo: Torrent,
   override def preStart(): Unit = {
     logger.info(s"Starting TorrentSession[${metainfo.infoHash}], pieces: ${metainfo.files.pieces.size}, pieceLength: ${metainfo.metainfo.info.pieceLength}")
     resume()
+
+    peerManager = context.actorOf(PeerManager.props(metainfo, 0, self, outboundConnectionEnabled = activePieces.nonEmpty))
 
     context.system.scheduler.schedule(10.seconds, 10.seconds, self, DumpStats)
     context.system.scheduler.schedule(10.seconds, 10.seconds, self, CheckRequest)
@@ -129,19 +133,8 @@ class TorrentSession(metainfo: Torrent,
       }
 
     case DumpStats =>
-      logger.info(s"Peers: ${peerStates.size}")
+      logger.info(s"Peers: ${peerStates.values.filter(_.choked).size}/${peerStates.size}")
       checkProgress()
-  }
-
-  def cancelBlock(f: (PieceBlock => Boolean)) = {
-    //    inflightBlocks.filter(p => f(p._1)).foreach(p => {
-    //      val (blk, requests) = p
-    //      requests.foreach(pair => {
-    //        sendPeerMsg(pair._1, Cancel(blk.piece, blk.offset, blk.length))
-    //      })
-    //    })
-    //
-    //    inflightBlocks.retain { (blk, _) => !f(blk) }
   }
 
   def handleMessage(peer: Peer, state: PeerState, msg: Message): Unit = msg match {
@@ -161,18 +154,18 @@ class TorrentSession(metainfo: Torrent,
     case Uninterested =>
       peerStates += (peer -> state.copy(interested = false))
 
-    case Bitfield(pieces) =>
+    case b@Bitfield(pieces) =>
       state.have ++= pieces
       peerStates += (peer -> state)
 
-      ifInterested(peer, pieces)
+      ifInterested(peer, b)
       schedulePieceRequests2(peer)
 
-    case Have(piece) =>
+    case h@Have(piece) =>
       state.have += piece
       peerStates += (peer -> state)
 
-      ifInterested(peer, Set(piece))
+      ifInterested2(peer, h)
       schedulePieceRequests2(peer)
 
     case Message.Piece(pieceIndex, offset, data) =>
@@ -180,17 +173,8 @@ class TorrentSession(metainfo: Torrent,
 
       writePiece(pieceIndex, offset, data) match {
         case (true, Some(piece)) =>
-          // cancel blocks belongs to this piece
-          cancelBlock(_.piece == pieceIndex)
           peerStates.foreach(p => sendPeerMsg(p._1, Have(pieceIndex)))
-        //TODO uninterested
-
-        case (true, None) =>
-          cancelBlock(blk => blk.piece == pieceIndex && blk.offset == offset)
-
-        case (false, _) =>
-        //          cancelBlock(_.piece == pieceIndex)
-        //wait for other peers response
+        case _ =>
       }
 
       schedulePieceRequests2(peer)
@@ -205,7 +189,7 @@ class TorrentSession(metainfo: Torrent,
         case Failure(e) =>
           //read failure
           logger.info("read block failed", e)
-          hostPeer ! ((peer, Kill))
+          peerManager ! ClosePeer(peer)
       }
 
     case x: Cancel =>
@@ -214,14 +198,53 @@ class TorrentSession(metainfo: Torrent,
 
   }
 
-  def ifInterested(peer: Peer, pieces: Set[Int]) = {
-    if ((activePieces.filterNot(_._2.isCompleted).keySet & pieces).nonEmpty && !interestedMarks.contains(peer)) {
-      sendPeerMsg(peer, Interested)
-      interestedMarks += peer
-    } else {
-      sendPeerMsg(peer, Uninterested)
-      interestedMarks += peer
+  def ifInterested(peer: Peer, bitfield: Bitfield) = {
+    val b = (activePieces.filterNot(_._2.isCompleted).keySet & bitfield.pieceSet).nonEmpty
+    peerStates(peer).weAreInterested match {
+      case Some(true) =>
+      case Some(false) =>
+        if (b) {
+          sendPeerMsg(peer, Interested)
+        }
+        peerStates(peer) = peerStates(peer).copy(weAreInterested = Some(true))
+
+      case None =>
+        peerStates(peer) = peerStates(peer).copy(weAreInterested = Some(b))
+        sendPeerMsg(peer, if (b) Interested else Uninterested)
     }
+  }
+
+  def ifInterested2(peer: Peer, have: Have) = {
+    val b = activePieces.filterNot(_._2.isCompleted).keySet.contains(have.pieceIndex)
+    peerStates(peer).weAreInterested match {
+      case Some(true) =>
+      case Some(false) =>
+        if (b) {
+          sendPeerMsg(peer, Interested)
+        }
+        peerStates(peer) = peerStates(peer).copy(weAreInterested = Some(true))
+
+      case None =>
+        peerStates(peer) = peerStates(peer).copy(weAreInterested = Some(b))
+        sendPeerMsg(peer, if (b) Interested else Uninterested)
+    }
+  }
+
+  def cancelRequests(pieceIndex: Int, blockIndex: Option[Int]) = {
+    peerRequests.foreach {
+      case (peer, requests) =>
+        val matchedRequests = requests.filter {
+          case (p, b, at) =>
+            pieceIndex == p && blockIndex.map(_ == b).getOrElse(true)
+        }
+
+        peerRequests(peer) = peerRequests(peer) -- matchedRequests
+        matchedRequests.foreach {
+          case (p, b, at) =>
+            sendPeerMsg(peer, Cancel(p, b, metainfo.files.pieces(p).blockLength(b, blockSize)))
+        }
+    }
+    peerRequests.retain((_, r) => r.nonEmpty)
   }
 
   /**
@@ -231,7 +254,7 @@ class TorrentSession(metainfo: Torrent,
    * (false, blocksNeedToBeDownloaded) => 写入失败
    */
   def writePiece(pieceIndex: Int, blockOffset: Int, blockData: Array[Byte]): (Boolean, Option[Piece]) = {
-    logger.info(s"Got piece $pieceIndex, $blockOffset, ${blockData.length}")
+    //    logger.info(s"Got piece $pieceIndex, $blockOffset, ${blockData.length}")
     if (completedPieces.contains(pieceIndex)) {
       logger.debug("Skip already merged block")
       return (true, None)
@@ -244,31 +267,40 @@ class TorrentSession(metainfo: Torrent,
       case Success(true) =>
         val ap = activePieces(pieceIndex)
         ap.blockRequestCount(blockOffset / blockSize) = -1
-        if (ap.blockRequestCount(blockOffset / blockSize) > 0) {
-          //cancel blocks
-        }
+        logger.info(s"Record block $pieceIndex ${blockOffset / blockSize}: ${ap.blockRequestCount(blockOffset / blockSize)} ")
+        cancelRequests(pieceIndex, Some(blockOffset / blockSize))
         checkProgress()
 
         if (ap.isCompleted) {
           store.mergeBlocks(pieceIndex) match {
-            case Left(piece) =>
-              assert(ap.isCompleted)
+            case Left(Some(piece)) =>
               activePieces -= pieceIndex
               completedPieces += pieceIndex
 
-              //TODO 根据已完成的piece，得到下载完全的文件，没有文件下完前不需要merge
-              store.mergePieces()
+              if (activePieces.isEmpty) {
+                onTorrentComplete()
+              }
+
               (true, Some(piece))
 
+            case Left(None) =>
+              (true, None)
+
             case Right(leftBlocks) =>
+              logger.info(s"Found invalid piece blocks: $pieceIndex")
               //            missingBlocks(pieceIndex) ++= leftBlocks
               //invalid piece found, re-download all blocks
               val ap = activePieces(pieceIndex)
               //TODO cancel requests
-              leftBlocks.foreach(blk => ap.requestedBlocks(blk.index) = 0)
+              leftBlocks.foreach(blk => {
+                ap.blockRequestCount(blk.index) = 0
+              })
+
+
               (true, None)
           }
         } else {
+          cancelRequests(pieceIndex, Some(blockOffset / blockSize))
           (true, None)
         }
 
@@ -284,7 +316,6 @@ class TorrentSession(metainfo: Torrent,
   }
 
   private def checkProgress() = {
-
     val totalBlocks: Int = metainfo.files.pieces.foldLeft(0) { (sum, p) =>
       sum + p.numBlocks(blockSize)
     }
@@ -302,10 +333,14 @@ class TorrentSession(metainfo: Torrent,
       healthy * 100
     ))
 
-    logger.info(s"Current requests $peerRequests")
+//    logger.info(s"Active pieces ${activePieces.map(p => (p._1, p._2.blockRequestCount.toList))}")
   }
 
   def schedulePieceRequests2(peer: Peer): Unit = {
+    if (peerRequests(peer).length > 1 || activePieces.isEmpty) {
+      return
+    }
+
     def choosePiece(): Option[Int] = {
       val n = allPieces.size
       val start = new Random().nextInt(n)
@@ -325,24 +360,24 @@ class TorrentSession(metainfo: Torrent,
       case None =>
         choosePiece() match {
           case Some(pieceIndex2) =>
-            val blkIndex2 = activePieces(pieceIndex2).blockRequestCount.zipWithIndex.sortBy(_._1).head._2
+            val blkIndex2 = activePieces(pieceIndex2).blockRequestCount.zipWithIndex.filter(_._1 != -1).sortBy(_._1).head._2
             requestBlock(peer, pieceIndex2, blkIndex2)
 
           case None =>
             sendPeerMsg(peer, Uninterested)
         }
     }
-
-
   }
 
   def requestBlock(peer: Peer, pieceIndex: Int, blockIndex: Int) = {
     activePieces(pieceIndex).blockRequestCount(blockIndex) += 1
+    logger.info(s"Block request count $pieceIndex $blockIndex ${activePieces(pieceIndex).blockRequestCount(blockIndex)}")
+
     peerRequests(peer) = peerRequests(peer) += ((pieceIndex, blockIndex, System.currentTimeMillis()))
 
     val blockLength = metainfo.files.pieces(pieceIndex).blockLength(blockIndex, blockSize)
     sendPeerMsg(peer, Request(pieceIndex, blockIndex * blockSize, blockLength))
-//    logger.info(s"Requesting block $peer => ${Request(pieceIndex, blockIndex * blockSize, blockLength)}")
+    logger.info(s"Requesting block $peer => ${Request(pieceIndex, blockIndex * blockSize, blockLength)}")
   }
 
   def chooseBlock2(peer: Peer): Option[(Int, Int)] = {
@@ -358,7 +393,6 @@ class TorrentSession(metainfo: Torrent,
    * 读取本地piece暂存文件，与piece hash进行对比，返回已经下载成功的piece
    */
   def resume() = {
-
     val pieces = store.resume().map(p => {
       val (pieceIndex, blocks) = p
       blocks.foldLeft(ActivePiece(metainfo.files.pieces(pieceIndex), blockSize)) { (ap, blk) =>
@@ -377,13 +411,13 @@ class TorrentSession(metainfo: Torrent,
 
   def sendPeerMsg(target: Peer, msg: Message) = {
     //    logger.debug(s"Sending message $msg to $target")
-    hostPeer ! ((target, msg))
+    peerManager ! Send(target, msg)
   }
 
   override def onPeerAdded(peer: Peer): Unit = {
-    if (completedPieces.nonEmpty) {
-      sendPeerMsg(peer, Bitfield(completedPieces.toSet))
-    }
+//    if (completedPieces.nonEmpty) {
+//      sendPeerMsg(peer, Bitfield(completedPieces.toSet))
+//    }
     sendPeerMsg(peer, Unchoke)
   }
 
@@ -401,5 +435,14 @@ class TorrentSession(metainfo: Torrent,
         }
       }
     }
+  }
+
+  def onTorrentComplete() = {
+    store.mergePieces()
+
+    peerManager ! DisableOutboundConnection
+    peerStates.filterNot(_._2.interested).foreach(p => peerManager ! ClosePeer(p._1))
+
+    logger.info(s"Torrent completed")
   }
 }
