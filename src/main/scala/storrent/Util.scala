@@ -1,7 +1,8 @@
 package storrent
 
 import java.io._
-import java.net.ServerSocket
+import java.net.{InetAddress, ServerSocket}
+import java.nio.ByteBuffer
 import java.nio.file.{ Paths, Files }
 import java.security.MessageDigest
 
@@ -21,7 +22,7 @@ object Util {
   def urlEncodeInfoHash(hexInfoHash: String) = hexInfoHash.sliding(2, 2).map(s => BigInt(s, 16) match {
     case b if (65 <= b && b <= 90) || (97 <= b && b <= 122) || (48 <= b && b <= 57) || b == 45 || b == 95 || b == 46 || b == 126 =>
       b.charValue.toString
-    case b => "%" + s.toUpperCase()
+    case b => "%" + s.toUpperCase
   }).mkString
 
   def sha1Hex(value: String) = {
@@ -34,7 +35,7 @@ object Util {
 
   def sha1(value: String) = {
     val digest = MessageDigest.getInstance("sha1")
-    digest.update(value.getBytes())
+    digest.update(value.getBytes)
     digest.digest()
   }
 
@@ -166,6 +167,28 @@ object Util {
       raf.readFully(data)
       data
     } finally raf.close()
+  }
+
+  def compactIpAndPort(ip: String, port: Int) = {
+    /**
+     *  The first 4 bytes contain the 32-bit ipv4 address.
+     *  The remaining two bytes contain the port number.
+     *  Both address and port use network-byte order.
+     *  http://www.bittorrent.org/beps/bep_0023.html
+     */
+      val result = ByteBuffer.allocate(6)
+      result.put(InetAddress.getByName(ip).getAddress)
+      result.putShort(port.toShort)
+      result.array()
+  }
+
+  def parseCompactIpAndPort(data: Array[Byte]): (String, Int) = {
+    val b = ByteBuffer.wrap(data)
+    val addrData = new Array[Byte](4)
+    b.get(addrData)
+    val addr = InetAddress.getByAddress(addrData)
+
+    (addr.getHostAddress, b.getShort & 0xffff)
   }
 
 }
